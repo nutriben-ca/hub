@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nutriben CA — Hub de Herramientas</title>
+<style>
+  :root {
+    --nb-navy: #0033A1;
+    --nb-sky: #00A0DF;
+    --nb-sky-light: #BADDF4;
+    --nb-mid: #3F58A7;
+    --nb-teal: #7EC7BD;
+    --nb-orange: #FAA334;
+    --nb-lavanda: #A9A5D1;
+    --bg: #F4F7FB;
+    --surface: #FFFFFF;
+    --text-primary: #1A1A2E;
+    --text-secondary: #5A6482;
+    --text-muted: #9AA0B8;
+    --border: #E2E8F5;
+    --border-hover: #B8C8E8;
+    --radius-card: 14px;
+    --radius-icon: 10px;
+    --shadow-card: 0 1px 3px rgba(0,51,161,0.06), 0 4px 16px rgba(0,51,161,0.04);
+    --shadow-hover: 0 4px 12px rgba(0,51,161,0.12), 0 8px 24px rgba(0,51,161,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    background: var(--nb-navy);
+    padding: 0 2rem;
+  }
+
+  .header-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-mark {
+    width: 36px;
+    height: 36px;
+    background: var(--nb-sky);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .logo-mark svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .logo-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: #FFFFFF;
+    letter-spacing: -0.01em;
+  }
+
+  .logo-sub {
+    font-size: 12px;
+    color: var(--nb-sky-light);
+    margin-top: 1px;
+  }
+
+  .header-badge {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--nb-sky-light);
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    padding: 4px 12px;
+    letter-spacing: 0.02em;
+  }
+
+  /* Main */
+  .main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2.5rem 2rem 4rem;
+  }
+
+  /* Section */
+  .section {
+    margin-bottom: 2.5rem;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 1rem;
+  }
+
+  .section-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .section-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 4px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* Category colors */
+  .cat-comercial .section-icon { background: #E6EEF9; color: var(--nb-navy); }
+  .cat-comercial .section-title { color: var(--nb-navy); }
+  .cat-comercial .card:hover { border-color: #8AAAD8; box-shadow: var(--shadow-hover); }
+  .cat-comercial .card-icon { background: #E6EEF9; color: var(--nb-navy); }
+
+  .cat-marketing .section-icon { background: #E0F3FB; color: #007AB8; }
+  .cat-marketing .section-title { color: #007AB8; }
+  .cat-marketing .card:hover { border-color: #7EC7BD; box-shadow: var(--shadow-hover); }
+  .cat-marketing .card-icon { background: #E0F3FB; color: #007AB8; }
+
+  .cat-operaciones .section-icon { background: #FEF3E2; color: #B5720A; }
+  .cat-operaciones .section-title { color: #B5720A; }
+  .cat-operaciones .card:hover { border-color: #FAA334; box-shadow: var(--shadow-hover); }
+  .cat-operaciones .card-icon { background: #FEF3E2; color: #B5720A; }
+
+  .cat-mnt .section-icon { background: #EEEDFE; color: #534AB7; }
+  .cat-mnt .section-title { color: #534AB7; }
+  .cat-mnt .card:hover { border-color: var(--nb-lavanda); box-shadow: var(--shadow-hover); }
+  .cat-mnt .card-icon { background: #EEEDFE; color: #534AB7; }
+
+  .cat-pda .section-icon { background: #E1F5EE; color: #0F6E56; }
+  .cat-pda .section-title { color: #0F6E56; }
+  .cat-pda .card:hover { border-color: var(--nb-teal); box-shadow: var(--shadow-hover); }
+  .cat-pda .card-icon { background: #E1F5EE; color: #0F6E56; }
+
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 1.1rem 1.1rem 1rem;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    box-shadow: var(--shadow-card);
+    transition: border-color 0.18s, box-shadow 0.18s, transform 0.15s;
+    cursor: pointer;
+  }
+
+  .card:hover {
+    transform: translateY(-2px);
+  }
+
+  .card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-icon);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+  }
+
+  .card-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+    margin-bottom: 4px;
+  }
+
+  .card-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    flex: 1;
+  }
+
+  .card-url {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    margin-top: 10px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Empty state card */
+  .card-empty {
+    border-style: dashed;
+    opacity: 0.55;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .card-empty:hover {
+    transform: none;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Footer */
+  .footer {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem 2rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .footer-left {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .footer-right {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  @media (max-width: 600px) {
+    .main { padding: 1.5rem 1rem 3rem; }
+    .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .header-badge { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="10" cy="10" r="7.5" stroke="white" stroke-width="1.5"/>
+          <circle cx="10" cy="10" r="3" fill="white"/>
+          <line x1="10" y1="2" x2="10" y2="6.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="10" y1="13.5" x2="10" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="2" y1="10" x2="6.5" y2="10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="13.5" y1="10" x2="18" y2="10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text">Nutriben CA</div>
+        <div class="logo-sub">Hub de herramientas</div>
+      </div>
+    </div>
+    <div class="header-badge">Casa Ferne, S.A.</div>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- COMERCIAL -->
+  <div class="section cat-comercial">
+    <div class="section-header">
+      <div class="section-icon">📊</div>
+      <div class="section-title">Comercial <span class="section-count">1 herramienta</span></div>
+    </div>
+    <div class="grid">
+      <a class="card" href="https://nutriben-ca.github.io/catalogo-nutriben/" target="_blank" rel="noopener">
+        <div class="card-icon">📦</div>
+        <div class="card-name">Catálogo de productos</div>
+        <div class="card-desc">Portafolio completo Nutriben para Centroamérica</div>
+        <div class="card-url">nutriben-ca.github.io/catalogo-nutriben/</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- MARKETING -->
+  <div class="section cat-marketing">
+    <div class="section-header">
+      <div class="section-icon">🎯</div>
+      <div class="section-title">Marketing <span class="section-count">9 herramientas</span></div>
+    </div>
+    <div class="grid">
+      <a class="card" href="https://nutriben-ca.github.io/dashboard.html" target="_blank" rel="noopener">
+        <div class="card-icon">🖥️</div>
+        <div class="card-name">Dashboard médicos</div>
+        <div class="card-desc">Vista de seguimiento para médicos — Pre-clínica</div>
+        <div class="card-url">nutriben-ca.github.io/dashboard.html</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/preconsulta_v3.html" target="_blank" rel="noopener">
+        <div class="card-icon">🩺</div>
+        <div class="card-name">Pre-clínica</div>
+        <div class="card-desc">Formulario de pre-consulta para médicos</div>
+        <div class="card-url">nutriben-ca.github.io/preconsulta_v3.html</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/comiss/" target="_blank" rel="noopener">
+        <div class="card-icon">✅</div>
+        <div class="card-name">CoMiSS</div>
+        <div class="card-desc">Puntuación de síntomas digestivos pediátricos</div>
+        <div class="card-url">nutriben-ca.github.io/comiss/</div>
+      </a>
+      <a class="card" href="https://fjjuarezb-ui.github.io/encuesta-nutriben/" target="_blank" rel="noopener">
+        <div class="card-icon">📋</div>
+        <div class="card-name">Encuesta médicos</div>
+        <div class="card-desc">Segmentación y seguimiento de 767 médicos</div>
+        <div class="card-url">fjjuarezb-ui.github.io/encuesta-nutriben/</div>
+      </a>
+      <a class="card" href="https://rendimiento-2264d3formulas.netlify.app" target="_blank" rel="noopener">
+        <div class="card-icon">📉</div>
+        <div class="card-name">Rendimiento por etapas</div>
+        <div class="card-desc">Visualización de rendimiento por etapa de fórmula</div>
+        <div class="card-url">rendimiento-2264d3formulas.netlify.app</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/simulador-formula/" target="_blank" rel="noopener">
+        <div class="card-icon">🧮</div>
+        <div class="card-name">Simulador fórmula HN</div>
+        <div class="card-desc">Cálculo de tomas y costos para Honduras</div>
+        <div class="card-url">nutriben-ca.github.io/simulador-formula/</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/plan-visita/" target="_blank" rel="noopener">
+        <div class="card-icon">🗺️</div>
+        <div class="card-name">Plan de visita multinivel</div>
+        <div class="card-desc">Planificación y seguimiento de visitas médicas</div>
+        <div class="card-url">nutriben-ca.github.io/plan-visita/</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/guia-inversion-emc/" target="_blank" rel="noopener">
+        <div class="card-icon">💡</div>
+        <div class="card-name">Guía inversión EMC</div>
+        <div class="card-desc">Guía de inversión por médico y territorio</div>
+        <div class="card-url">nutriben-ca.github.io/guia-inversion-emc/</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/registro-acciones/" target="_blank" rel="noopener">
+        <div class="card-icon">📝</div>
+        <div class="card-name">Registro de acciones</div>
+        <div class="card-desc">Seguimiento de acciones y presupuesto de campo</div>
+        <div class="card-url">nutriben-ca.github.io/registro-acciones/</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- OPERACIONES -->
+  <div class="section cat-operaciones">
+    <div class="section-header">
+      <div class="section-icon">⚙️</div>
+      <div class="section-title">Operaciones <span class="section-count">4 herramientas</span></div>
+    </div>
+    <div class="grid">
+      <a class="card" href="https://nutriben-ca.github.io/gastos/" target="_blank" rel="noopener">
+        <div class="card-icon">🧾</div>
+        <div class="card-name">Gastos</div>
+        <div class="card-desc">Registro y aprobación de gastos del equipo</div>
+        <div class="card-url">nutriben-ca.github.io/gastos/</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/ciclos-2026/" target="_blank" rel="noopener">
+        <div class="card-icon">📅</div>
+        <div class="card-name">Ciclos Nutriben 2026</div>
+        <div class="card-desc">Calendario de ciclos de visita médica 2026</div>
+        <div class="card-url">nutriben-ca.github.io/ciclos-2026/</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/coaching-jornada/" target="_blank" rel="noopener">
+        <div class="card-icon">🎓</div>
+        <div class="card-name">Coaching Jornada</div>
+        <div class="card-desc">Herramienta de coaching y jornada de campo Nutriben</div>
+        <div class="card-url">nutriben-ca.github.io/coaching-jornada/</div>
+      </a>
+      <a class="card" href="https://nutriben-ca.github.io/academia-nutriben/" target="_blank" rel="noopener">
+        <div class="card-icon">🏫</div>
+        <div class="card-name">Academia Nutriben CA</div>
+        <div class="card-desc">Plataforma de capacitación y formación del equipo</div>
+        <div class="card-url">nutriben-ca.github.io/academia-nutriben/</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- MNT -->
+  <div class="section cat-mnt">
+    <div class="section-header">
+      <div class="section-icon">🏪</div>
+      <div class="section-title">MNT — Mercado no tradicional <span class="section-count">próximamente</span></div>
+    </div>
+    <div class="grid">
+      <div class="card card-empty">
+        <div class="card-icon">＋</div>
+        <div class="card-name">En desarrollo</div>
+        <div class="card-desc">Las herramientas de este módulo estarán disponibles pronto</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDA -->
+  <div class="section cat-pda">
+    <div class="section-header">
+      <div class="section-icon">📌</div>
+      <div class="section-title">PDA — Planes de acción <span class="section-count">próximamente</span></div>
+    </div>
+    <div class="grid">
+      <div class="card card-empty">
+        <div class="card-icon">＋</div>
+        <div class="card-name">En desarrollo</div>
+        <div class="card-desc">Las herramientas de este módulo estarán disponibles pronto</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-left">Casa Ferne, S.A. · Distribución exclusiva Nutriben® Centroamérica · Honduras · El Salvador · Nicaragua · Costa Rica</div>
+  <div class="footer-right">nutriben-ca.github.io</div>
+</footer>
+
+</body>
+</html>
