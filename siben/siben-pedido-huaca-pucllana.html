@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pedido Huaca Pucllana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0033A1;--sky:#00A0DF;--orange:#FAA334;--ink:#16223F;--muted:#5B6785;--line:#D8E4F3;--bg:#F3F8FD;--tint:#E6F5FC;--warm:#FFF4E5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Figtree",system-ui,Arial,sans-serif;font-size:15px;line-height:1.45}
+.wrap{max-width:820px;margin:0 auto;padding:0 16px}
+header{background:var(--navy);color:#fff;padding:20px 0 22px}
+.brand{display:inline-block;background:#fff;color:var(--navy);font-weight:800;border-radius:8px;padding:6px 10px;margin-bottom:12px}
+.brand img{height:28px;display:block}
+h1{margin:0 0 4px;font-size:26px;line-height:1.15}
+header p{margin:0;color:#CFE0FF}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.bar button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:10px 14px;background:var(--navy);color:#fff;cursor:pointer}
+.bar button.alt{background:#fff;color:var(--navy);border:1.5px solid var(--line)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
+.stat b{display:block;font-size:26px;color:var(--navy)}
+.stat span{font-size:13px;color:var(--muted)}
+section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0;break-inside:avoid}
+h2{margin:0 0 10px;font-size:18px;color:var(--navy)}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+td.n{text-align:right;font-weight:800;color:var(--navy);width:60px}
+.nota{background:var(--warm);color:#8A4A06;border-radius:6px;padding:2px 8px;font-size:13.5px;display:inline-block}
+.pend{color:var(--muted);font-size:14px}
+.empty{color:var(--muted);text-align:center;padding:12px}
+.msg{font-size:13.5px;color:var(--muted)}
+footer{color:var(--muted);font-size:12.5px;text-align:center;padding:10px 0 30px}
+@media(max-width:520px){.stats{grid-template-columns:1fr 1fr 1fr}.stat b{font-size:22px}}
+@media print{.bar,.pendsec{display:none}body{background:#fff;font-size:12px}header{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="brand"><img src="nutriben-logo.png" alt="Nutribén" onerror="this.outerHTML='Nutribén'"></div>
+  <h1>Pedido de grupo · Huaca Pucllana</h1>
+  <p>Jueves 29 de octubre de 2026 · 7:30 pm · Grupo Nutribén Centroamérica (Congreso SIBEN)</p>
+</div></header>
+
+<main class="wrap">
+  <div class="bar">
+    <button id="reload" class="alt">Actualizar</button>
+    <button id="copy" class="alt">Copiar para WhatsApp</button>
+    <button id="print">Imprimir / PDF</button>
+  </div>
+  <div class="msg" id="msg">Cargando pedidos…</div>
+
+  <div class="stats">
+    <div class="stat"><b id="s-tot">–</b><span>Comensales confirmados</span></div>
+    <div class="stat"><b id="s-pla">–</b><span>Platos distintos</span></div>
+    <div class="stat"><b id="s-not">–</b><span>Con indicaciones</span></div>
+  </div>
+
+  <section>
+    <h2>Resumen por plato</h2>
+    <table><thead><tr><th>Plato fuerte</th><th style="text-align:right">Cant.</th></tr></thead><tbody id="t-platos"></tbody></table>
+  </section>
+
+  <section>
+    <h2>Detalle por comensal</h2>
+    <table><thead><tr><th>Comensal</th><th>Plato</th><th>Indicaciones</th></tr></thead><tbody id="t-pers"></tbody></table>
+  </section>
+
+  <section class="pendsec">
+    <h2>Pendientes de elegir</h2>
+    <div class="pend" id="pend"></div>
+  </section>
+</main>
+<footer>Contacto del grupo: Ricardo Flores · +504 9803-7359</footer>
+
+<script>
+const SUPA_URL="https://lzljnszgqjxxufpkcolv.supabase.co";
+const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6bGpuc3pncWp4eHVmcGtjb2x2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNTUyNzMsImV4cCI6MjA5NjYzMTI3M30.GQ9kOllHiIp3PYZRs19_0RgS5XwQSgKMroe9VKIX6VI";
+const COL="p2", NOTA="notas2", TITULO="Huaca Pucllana", FECHA="Jueves 29 de octubre de 2026 · 7:30 pm";
+const INVITADOS=["Dra. Irina Ruballo","Dr. David Valencia","Dra. Ilia Gonzalez","Dra. Elia Ruano","Dr. Fabricio Bonilla","Dra. Margarita Fabián","Dra. Alicia Castro de Cruz","Dra. Michelle Tabora","Dr. Jorge Maldonado","Dra. Patricia Rodas","Dr. Edgar Duarte","Dra. Leticia Castro","Dr. Héctor Carranza","Dr. Mauricio Perdomo","Dra. Wendy Montalván","Nidia Cárcamo","Mabell Martínez","Carlos Galeas","Ricardo Flores"];
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let rows=[];
+
+async function load(){
+  const msg=document.getElementById("msg"); msg.textContent="Cargando pedidos…";
+  try{
+    const r=await fetch(`${SUPA_URL}/rest/v1/siben_pedidos?select=nombre,${COL},${NOTA},updated_at&order=nombre`,{headers:{apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY}});
+    if(!r.ok) throw new Error(await r.text());
+    rows=(await r.json()).filter(x=>x[COL]);
+    render();
+    msg.textContent="Actualizado: "+new Date().toLocaleString("es",{dateStyle:"medium",timeStyle:"short"});
+  }catch(e){ msg.textContent="No se pudieron cargar los pedidos. Revise su conexión."; console.error(e); }
+}
+
+function render(){
+  const count={}; rows.forEach(x=>count[x[COL]]=(count[x[COL]]||0)+1);
+  const platos=Object.entries(count).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+  document.getElementById("t-platos").innerHTML=platos.length?platos.map(([p,n])=>`<tr><td>${esc(p)}</td><td class="n">${n}</td></tr>`).join(""):`<tr><td colspan="2" class="empty">Aún no hay pedidos</td></tr>`;
+  document.getElementById("t-pers").innerHTML=rows.length?rows.map(x=>`<tr><td>${esc(x.nombre)}</td><td>${esc(x[COL])}</td><td>${x[NOTA]?`<span class="nota">${esc(x[NOTA])}</span>`:""}</td></tr>`).join(""):`<tr><td colspan="3" class="empty">Aún no hay pedidos</td></tr>`;
+  const ya=new Set(rows.map(x=>x.nombre)); const pend=INVITADOS.filter(n=>!ya.has(n));
+  document.getElementById("pend").textContent=pend.length?pend.join(" · "):"Todos eligieron su plato.";
+  document.getElementById("s-tot").textContent=rows.length;
+  document.getElementById("s-pla").textContent=platos.length;
+  document.getElementById("s-not").textContent=rows.filter(x=>x[NOTA]).length;
+}
+
+function texto(){
+  const count={}; rows.forEach(x=>count[x[COL]]=(count[x[COL]]||0)+1);
+  let t=`*Pedido grupo Nutribén · ${TITULO}*\n${FECHA}\nComensales: ${rows.length}\n\n*Resumen*\n`;
+  Object.entries(count).sort((a,b)=>b[1]-a[1]).forEach(([p,n])=>t+=`${n} × ${p}\n`);
+  const notas=rows.filter(x=>x[NOTA]);
+  if(notas.length){ t+=`\n*Indicaciones*\n`; notas.forEach(x=>t+=`• ${x.nombre}: ${x[COL]} — ${x[NOTA]}\n`); }
+  t+=`\n*Detalle*\n`; rows.forEach(x=>t+=`• ${x.nombre}: ${x[COL]}\n`);
+  return t;
+}
+
+document.getElementById("reload").onclick=load;
+document.getElementById("print").onclick=()=>window.print();
+document.getElementById("copy").onclick=async()=>{ try{ await navigator.clipboard.writeText(texto()); const b=document.getElementById("copy"); b.textContent="¡Copiado!"; setTimeout(()=>b.textContent="Copiar para WhatsApp",1500);}catch(e){ alert(texto()); } };
+load();
+</script>
+</body>
+</html>
