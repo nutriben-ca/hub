@@ -343,7 +343,7 @@ function kpis(L){
 }
 
 /* ---------- vista prescriptores ---------- */
-const COLS=[['score','Puntaje','r'],['n','Médico',''],['cat','Cat. CU','r'],['t26','Rx total TAM','r'],['c26','Rx compet.','r'],['cw','Rx ponderado','r'],['trend','Tendencia compet.','r'],['sh26','Nutribén','r'],['top','Competidor principal',''],['tipo','Tipología','']];
+const COLS=[['score','Puntaje','r'],['n','Médico',''],['cat','Cat. CU','r'],['t26','Rx total TAM','r'],['c26','Rx compet.','r'],['trend','Tendencia compet.','r'],['sh26','Nutribén','r'],['top','Competidor principal',''],['tipo','Tipología','']];
 function mixBar(d){
   const tot=d.c26+d.nb26; if(!tot)return '<div class="bar"></div>';
   const parts=[['Nutribén',d.nb26]].concat(d.labs);
@@ -369,7 +369,6 @@ function renderPres(){
       <td class="r num">${d.cat}</td>
       <td class="r num" title="Todas las recetas del médico en el mercado V06C, año móvil a ago-26: Nutribén + competencia + productos sin equivalente">${fmt(d.t26)}</td>
       <td class="r num">${fmt(labRx(d,lab))}${lab?`<span class="meta"> / ${fmt(d.c26)}</span>`:''}</td>
-      <td class="r num">${fmt(d.cw)}</td>
       <td class="r">${trendTxt(d.cq5,d.cq8)}</td>
       <td class="r"><div class="num">${pct(d.sh26)} <span class="meta">${d.nb26?'('+d.nb26+' Rx)':''}</span></div><div class="meta num ${dsh>0.001?'dn':dsh<-0.001?'up':''}">${dsh>0.001?'+':''}${(dsh*100).toFixed(0)} pts vs. año ant.</div></td>
       <td>${mixBar(d)}<div class="meta">${lab?esc(lab)+' '+(d.c26?pct(labRx(d,lab)/d.c26):'0%')+' de la compet.'+(d.top!==lab&&d.c26?' · principal: '+esc(d.top):''):esc(d.top)+' '+(d.c26?pct(d.topSh)+' de la compet.':'')}</div></td>
@@ -379,7 +378,7 @@ function renderPres(){
   if(!L.length)h='<div class="empty">Ningún médico cumple estos filtros. Baja el mínimo de Rx o activa más tipologías.</div>';
   if(L.length>ST.lim)h+=`<button class="more" id="more">Mostrar ${Math.min(60,L.length-ST.lim)} más (${fmt(L.length-ST.lim)} restantes)</button>`;
   h+='<div class="legend">'+Object.entries(LABC).map(([l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')+'</div>';
-  h+='<p class="note">Rx = recetas en el año móvil a agosto 2026 (TAM). <b>Rx total TAM</b> = todas las recetas del médico en V06C (Nutribén, competencia y productos sin equivalente). <b>Rx compet.</b> = solo competencia con un producto Nutribén que lo responda (excluye suplementos, aminoácidos y antirreflujo). <b>Rx ponderado</b> = Rx compet. × peso del segmento (×5 inicio/confort/hidrolizada, ×3 prematuros/crecimiento, ×1 sin lactosa/soya/cereal): da más valor a las recetas donde Nutribén tiene mayor ventaja y es la base del puntaje. <b>Tendencia</b> compara las recetas de la competencia del trimestre a mayo con el de agosto; ▼ en verde es buena noticia para nosotros. Toca un médico para ver su detalle y la acción sugerida.</p>';
+  h+='<p class="note">Rx = recetas en el año móvil a agosto 2026 (TAM). <b>Rx total TAM</b> = todas las recetas del médico en V06C (Nutribén, competencia y productos sin equivalente). <b>Rx compet.</b> = solo competencia con un producto Nutribén que lo responda (excluye suplementos, aminoácidos y antirreflujo). El <b>Puntaje</b> ordena a los médicos dando más importancia a quien receta Natal, confort e hidrolizada que a quien receta prematuros o crecimiento, y a estos más que sin lactosa, soya o cereal; esa prioridad solo mueve el ranking, no cambia las recetas que ves. <b>Tendencia</b> compara las recetas de la competencia del trimestre a mayo con el de agosto; ▼ en verde es buena noticia para nosotros. Toca un médico para ver su detalle y la acción sugerida.</p>';
   h=`<div class="toolbar"><span><b class="num">${fmt(L.length)}</b> médicos en la selección</span><span style="flex:1"></span><button class="btn" id="xlsP">Descargar Excel</button></div>`+h;
   $('v-pres').innerHTML=h;
   $('xlsP').onclick=()=>exportPres(L);
@@ -510,7 +509,7 @@ function renderComp(){
   h+='</tbody></table></div><p class="note">Excluye suplementos pediátricos (PediaSure, Ascenda, Enterex), fórmulas de aminoácidos y antirreflujo, donde Nutribén no tiene producto.</p></div>';
   h+='<div class="card"><h3>Dónde atacar: competencia por segmento clínico</h3><div style="overflow-x:auto"><table class="mx"><thead><tr><th>Segmento</th><th>Nutribén para responder</th><th class="r">Rx compet.</th>'+LABS.map(l=>`<th class="r">${l==='Mead Johnson'?'MJ':l}</th>`).join('')+'</tr></thead><tbody>';
   segs.map(s=>[s,Object.values(M[s]||{}).reduce((a,b)=>a+b,0)]).sort((a,b)=>b[1]-a[1]).forEach(([s,n])=>{
-    h+=`<tr style="cursor:default" data-seg="${esc(s)}"><td><b>${esc(s)}</b></td><td class="meta">${esc(SEGS[s].nb)} · peso ×${SEGS[s].w}</td><td class="r num">${fmt(n)}</td>`+LABS.map(l=>{const v=(M[s]||{})[l]||0,sh=n?v/n:0;return `<td class="heat" style="background:color-mix(in srgb,${LABC[l]} ${Math.round(sh*55)}%,transparent)">${v?pct(sh):'·'}</td>`}).join('')+'</tr>';
+    h+=`<tr style="cursor:default" data-seg="${esc(s)}"><td><b>${esc(s)}</b></td><td class="meta">${esc(SEGS[s].nb)} · prioridad ×${SEGS[s].w}</td><td class="r num">${fmt(n)}</td>`+LABS.map(l=>{const v=(M[s]||{})[l]||0,sh=n?v/n:0;return `<td class="heat" style="background:color-mix(in srgb,${LABC[l]} ${Math.round(sh*55)}%,transparent)">${v?pct(sh):'·'}</td>`}).join('')+'</tr>';
   });
   h+='</tbody></table></div><p class="note">Cada celda es la participación del laboratorio dentro del segmento. Toca un segmento para ver sus médicos en Prescriptores.</p></div></div>';
   h+='<div class="grid2">';
@@ -528,7 +527,7 @@ function renderComp(){
 function renderMet(){
   const segs=Object.entries(SEGS).filter(([s])=>s!=='Nutribén');
   $('v-met').innerHTML=`<div class="grid2"><div class="card"><h3>Puntaje de oportunidad (0–100)</h3>
-  <p><b>70% volumen convertible.</b> Recetas de la competencia en segmentos donde Nutribén tiene producto, multiplicadas por la prioridad del portafolio (Ultra Core ×5, Core ×3, Estratégicos ×1). Se expresa como percentil dentro del país.</p>
+  <p><b>70% volumen convertible.</b> Recetas de la competencia en segmentos donde Nutribén tiene producto. Para ordenar, cada segmento cuenta según la prioridad del portafolio (Ultra Core ×5, Core ×3, Estratégicos ×1): un médico que receta Natal o confort sube más que uno que receta el mismo número de recetas de prematuros. Es solo un criterio de ranking; las recetas que se muestran son las reales. Se expresa como percentil dentro del país.</p>
   <p><b>30% apertura al cambio.</b> Promedio de tres señales: qué tan repartidas tiene sus recetas entre competidores, si la competencia pierde recetas con él entre trimestres, y si alguna vez recetó Nutribén. En médicos donde Nutribén ya tiene 40% o más, esta parte se reduce a la mitad: ahí la tarea es defender, no conquistar.</p>
   <p class="note">Un médico con muchas recetas fieles a un solo laboratorio puede puntuar menos que uno con menos recetas repartidas y en caída: es más barato de mover.</p></div>
   <div class="card"><h3>Tipologías</h3><table style="min-width:0"><tbody>
@@ -539,7 +538,7 @@ function renderMet(){
   <tr style="cursor:default"><td><span class="pill t-defender">Defender</span></td><td>Nutribén 40% o más.</td></tr>
   <tr style="cursor:default"><td><span class="pill t-feudo">Leal a un competidor</span></td><td>Un laboratorio concentra 80% o más de al menos 6 Rx/año y no va en caída. Cambio lento y caro.</td></tr>
   <tr style="cursor:default"><td><span class="pill t-bajo">Bajo volumen</span></td><td>Sin recetas de la competencia con equivalente. Oculto por defecto.</td></tr></tbody></table></div>
-  <div class="card"><h3>Segmentos clínicos y producto Nutribén para responder</h3><table style="min-width:0"><thead><tr><th>Segmento</th><th>Nutribén</th><th class="r">Peso</th></tr></thead><tbody>${segs.map(([s,v])=>`<tr style="cursor:default"><td>${esc(s)}</td><td>${esc(v.nb)}</td><td class="r num">×${v.w}</td></tr>`).join('')}</tbody></table>
+  <div class="card"><h3>Segmentos clínicos y producto Nutribén para responder</h3><table style="min-width:0"><thead><tr><th>Segmento</th><th>Nutribén</th><th class="r">Prioridad en el ranking</th></tr></thead><tbody>${segs.map(([s,v])=>`<tr style="cursor:default"><td>${esc(s)}</td><td>${esc(v.nb)}</td><td class="r num">×${v.w}</td></tr>`).join('')}</tbody></table>
   <p class="note">La clasificación de cada producto de la competencia se hizo por su nombre comercial. Antirreflujo se excluye: Nutribén no tiene producto para ese segmento.</p></div>
   <div class="card"><h3>Límites de los datos</h3><p>Close Up mide recetas que llegan a farmacias del panel; no cuenta muestras médicas ni compras fuera del panel. Close Up registra Nutribén como una sola línea (más Hidrolizada), así que no se ve qué producto Nutribén receta cada médico.</p><p class="note">La cartera de visitadores está cruzada por nombre con la Guía de Inversión EMC solo para Honduras y El Salvador.</p></div></div>`;
 }
