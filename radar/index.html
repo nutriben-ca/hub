@@ -343,7 +343,7 @@ function kpis(L){
 }
 
 /* ---------- vista prescriptores ---------- */
-const COLS=[['score','Puntaje','r'],['n','Médico',''],['cat','Cat. CU','r'],['c26','Rx compet.','r'],['cw','Rx ponderado','r'],['trend','Tendencia compet.','r'],['sh26','Nutribén','r'],['top','Competidor principal',''],['tipo','Tipología','']];
+const COLS=[['score','Puntaje','r'],['n','Médico',''],['cat','Cat. CU','r'],['t26','Rx total TAM','r'],['c26','Rx compet.','r'],['cw','Rx ponderado','r'],['trend','Tendencia compet.','r'],['sh26','Nutribén','r'],['top','Competidor principal',''],['tipo','Tipología','']];
 function mixBar(d){
   const tot=d.c26+d.nb26; if(!tot)return '<div class="bar"></div>';
   const parts=[['Nutribén',d.nb26]].concat(d.labs);
@@ -367,6 +367,7 @@ function renderPres(){
       <td><div class="sc"><span class="num">${d.score}</span><div class="tr"><i style="width:${d.score}%"></i></div></div></td>
       <td style="min-width:220px"><span class="nm">${esc(d.n)}</span>${cart}${invb}<div class="meta">${esc(d.esp)} · ${esc(d.loc)}</div></td>
       <td class="r num">${d.cat}</td>
+      <td class="r num" title="Todas las recetas del médico en el mercado V06C, año móvil a ago-26: Nutribén + competencia + productos sin equivalente">${fmt(d.t26)}</td>
       <td class="r num">${fmt(labRx(d,lab))}${lab?`<span class="meta"> / ${fmt(d.c26)}</span>`:''}</td>
       <td class="r num">${fmt(d.cw)}</td>
       <td class="r">${trendTxt(d.cq5,d.cq8)}</td>
@@ -378,7 +379,7 @@ function renderPres(){
   if(!L.length)h='<div class="empty">Ningún médico cumple estos filtros. Baja el mínimo de Rx o activa más tipologías.</div>';
   if(L.length>ST.lim)h+=`<button class="more" id="more">Mostrar ${Math.min(60,L.length-ST.lim)} más (${fmt(L.length-ST.lim)} restantes)</button>`;
   h+='<div class="legend">'+Object.entries(LABC).map(([l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')+'</div>';
-  h+='<p class="note">Rx = recetas en el año móvil a agosto 2026 (TAM). <b>Tendencia</b> compara las recetas de la competencia del trimestre a mayo con el de agosto; ▼ en verde es buena noticia para nosotros. Toca un médico para ver su detalle y la acción sugerida.</p>';
+  h+='<p class="note">Rx = recetas en el año móvil a agosto 2026 (TAM). <b>Rx total TAM</b> = todas las recetas del médico en V06C (Nutribén, competencia y productos sin equivalente). <b>Rx compet.</b> = solo competencia con un producto Nutribén que lo responda (excluye suplementos, aminoácidos y antirreflujo). <b>Rx ponderado</b> = Rx compet. × peso del segmento (×5 inicio/confort/hidrolizada, ×3 prematuros/crecimiento, ×1 sin lactosa/soya/cereal): da más valor a las recetas donde Nutribén tiene mayor ventaja y es la base del puntaje. <b>Tendencia</b> compara las recetas de la competencia del trimestre a mayo con el de agosto; ▼ en verde es buena noticia para nosotros. Toca un médico para ver su detalle y la acción sugerida.</p>';
   h=`<div class="toolbar"><span><b class="num">${fmt(L.length)}</b> médicos en la selección</span><span style="flex:1"></span><button class="btn" id="xlsP">Descargar Excel</button></div>`+h;
   $('v-pres').innerHTML=h;
   $('xlsP').onclick=()=>exportPres(L);
@@ -391,9 +392,9 @@ function planXls(d){
 }
 function exportPres(L){
   if(!window.XLSX){alert('No se pudo cargar el generador de Excel.');return}
-  const H=['País','Localidad','Médico','Especialidad','Domicilio','Código Close Up','Visitador','Tier','Inversión Nutribén','Tipología','Puntaje','Cat. Close Up','Rx competencia/año','Rx competencia año anterior','Rx Nutribén/año','Participación Nutribén','Competidor principal','Participación del principal','Trim. may-26 competencia','Trim. ago-26 competencia','Acción sugerida','Plan de Acción','Tácticas en el Plan','Inversión en Plan (US$)'];
-  const rows=[H].concat(L.map(d=>[d.pais,d.loc,d.n,d.esp,d.dom,d.id,d.mr.join(', ')||'Fuera de cartera',d.tier||'',d.intl?'Apoyo internacional':(d.pat>0?'Patrocinado':''),TNAME[d.tipo],d.score,d.cat,d.c26,d.c25,d.nb26,Math.round(d.sh26*100)+'%',d.top,Math.round(d.topSh*100)+'%',d.cq5,d.cq8,action(d).replace(/<[^>]+>/g,''),...planXls(d)]));
-  const ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=H.map((h,i)=>({wch:[12,18,32,18,34,14,18,8,18,20,8,8,10,10,10,10,16,10,10,10,60,16,34,14][i]}));
+  const H=['País','Localidad','Médico','Especialidad','Domicilio','Código Close Up','Visitador','Tier','Inversión Nutribén','Tipología','Puntaje','Cat. Close Up','Rx total TAM 08/26 (todo V06C)','Rx competencia/año','Rx competencia año anterior','Rx Nutribén/año','Participación Nutribén','Competidor principal','Participación del principal','Trim. may-26 competencia','Trim. ago-26 competencia','Acción sugerida','Plan de Acción','Tácticas en el Plan','Inversión en Plan (US$)'];
+  const rows=[H].concat(L.map(d=>[d.pais,d.loc,d.n,d.esp,d.dom,d.id,d.mr.join(', ')||'Fuera de cartera',d.tier||'',d.intl?'Apoyo internacional':(d.pat>0?'Patrocinado':''),TNAME[d.tipo],d.score,d.cat,d.t26,d.c26,d.c25,d.nb26,Math.round(d.sh26*100)+'%',d.top,Math.round(d.topSh*100)+'%',d.cq5,d.cq8,action(d).replace(/<[^>]+>/g,''),...planXls(d)]));
+  const ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=H.map((h,i)=>({wch:[12,18,32,18,34,14,18,8,18,20,8,8,10,10,10,10,10,16,10,10,10,60,16,34,14][i]}));
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Prescriptores');
   XLSX.writeFile(wb,'Prescriptores_V06C_'+ST.pais.replace(/ /g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
