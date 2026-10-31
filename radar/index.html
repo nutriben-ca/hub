@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 /* Layout: barra de filtros fija arriba, franja de KPIs, pestañas; tabla densa tipo hoja de trabajo con panel de detalle */
 :root{
@@ -75,6 +76,10 @@ tbody tr.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .inv{font-size:10.5px;font-weight:700;color:#fff;background:#7a3b9e;border-radius:4px;padding:0 5px;margin-left:4px;white-space:nowrap}
 .tacs{margin-top:14px;display:flex;flex-wrap:wrap;gap:6px 14px}.tac{font-size:12.5px;cursor:pointer;white-space:nowrap}.tac input{accent-color:var(--navy)}
 .inv.l{background:#5b6b7a}
+.inv.pl{background:#0b5ea8}.inv.pl.p{background:#0b5ea8}
+.psync{font-size:11.5px;color:var(--muted,#5b6b7a);margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}.psync .dot{width:8px;height:8px;border-radius:50%;background:#b7c0cc;display:inline-block}.psync.live .dot{background:#1f9d6b}.psync.cache .dot{background:#e0a21a}.psync button{font:inherit;font-size:11.5px;border:1px solid var(--line);background:#fff;border-radius:5px;padding:0 6px;cursor:pointer}
+.pbox{margin-top:12px;border:1px solid #bcd3ea;background:#f2f7fd;border-radius:8px;padding:10px 12px;font-size:12.5px}.pbox h4{margin:0 0 4px;font-size:12px;color:#0b5ea8}.pbox .meta{margin-top:2px}
+.tac.inplan{color:#0b5ea8;font-weight:600;cursor:default}
 .mr.no{color:var(--accent-fg);background:color-mix(in srgb,var(--accent) 22%,transparent)}
 .bar{display:flex;height:8px;border-radius:3px;overflow:hidden;background:var(--surface2);width:110px}
 .bar i{display:block;height:100%}
@@ -130,9 +135,11 @@ textarea{font:inherit;font-size:12.5px;width:100%;min-width:160px;background:var
     <div class="f"><label for="fCov">Cobertura</label><select id="fCov"><option value="">Todos</option><option value="in">En nuestra cartera</option><option value="out">Fuera de cartera</option></select></div>
     <div class="f"><label for="fMR">Visitador</label><select id="fMR"></select></div>
     <div class="f"><label for="fInv">Inversión Nutribén</label><select id="fInv"><option value="">Todos</option><option value="intl">✈ Apoyo internacional</option><option value="any">Con patrocinio (cualquiera)</option><option value="none">Sin patrocinio</option></select></div>
+    <div class="f"><label for="fPlan">Plan de Acción</label><select id="fPlan"><option value="">Todos</option><option value="con">Con acción en el Plan</option><option value="sin">Sin acción en el Plan</option></select></div>
     <div class="f"><label for="fMin">Rx mín. competencia</label><input type="number" id="fMin" min="0" value="3"></div>
     <div class="f" style="flex:1 1 180px"><label for="fQ">Buscar médico</label><input type="search" id="fQ" placeholder="Nombre o domicilio" style="max-width:none;width:100%"></div>
   </div>
+  <div class="psync" id="psync"></div>
   <div class="chips" id="tipos" style="margin-top:10px" aria-label="Tipología"></div>
 
   <div class="kpis" id="kpis"></div>
@@ -204,15 +211,68 @@ D.docs.forEach(d=>{
 const ST=Object.assign({pais:'Honduras',tipos:TIPOS.map(t=>t[0]).filter(t=>t!=='bajo'),sort:'score',dir:-1,lim:60,tab:'pres'},store('rp_state')||{});
 ST.lim=60;
 let PLAN=store('rp_plan')||{};
+/* ---------- Plan de Acción (solo lectura) ---------- */
+const PA_URL='https://nutriben-ca.github.io/plan-accion/';
+let PLANES=null,PLAN_SRC='',PLAN_AT=null,SBP=null,PLAN_N={};
+const pnorm=k=>String(k).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+const pnum=v=>{const n=parseFloat(v);return isNaN(n)?0:n};
+const PTAC=['patrocinio','mesa','oneone','mm','material'];
+function plansOf(d){ /* planes guardados de este médico (puede estar en carteras de dos visitadores) */
+  if(!PLANES||!d.pk||!d.pk.length)return [];
+  const out=[];
+  d.pk.forEach(k=>{const p=PLANES[k]||PLANES[PLAN_N[pnorm(k)]];if(p&&!out.some(x=>x.p===p))out.push({k,p})});
+  return out;
+}
+const tacsAct=p=>PTAC.filter(id=>p[id]&&p[id].activo);
+function planUsd(p){
+  if(typeof p._inv==='number'&&p._inv>0)return p._inv;
+  let t=0;['patrocinio','oneone','mm','material'].forEach(id=>{const v=p[id];if(v&&v.activo)t+=pnum(v.monto)*(id==='mm'?12:1)});
+  (p.solicitudes||[]).forEach(x=>{t+=pnum(x.monto)});return t;
+}
+const tacIn=d=>{const s=new Set();plansOf(d).forEach(({p})=>tacsAct(p).forEach(t=>s.add(t)));return s};
+function planSyncUI(){
+  const n=PLANES?Object.keys(PLANES).length:0;let c='',t;
+  if(PLAN_SRC==='live'){c='live';t=`Planes de acción en vivo · ${n} médicos con plan · leído ${PLAN_AT.toLocaleTimeString('es-HN',{hour:'2-digit',minute:'2-digit'})} <button onclick="cargarPlanes(true)">actualizar</button>`}
+  else if(PLAN_SRC==='cache'){c='cache';t=`Mostrando la última copia del Plan de Acción guardada en este equipo (${n} planes). <a href="${PA_URL}" target="_blank" rel="noopener">Abre el Plan de Acción</a> e inicia sesión para verlos al día.`}
+  else if(PLAN_SRC==='cargando'){t='Leyendo planes de acción…'}
+  else if(PLAN_SRC==='error'){t='No se pudieron leer los planes de acción. <button onclick="cargarPlanes(true)">reintentar</button>'}
+  else{t=`Para ver qué médicos ya tienen acciones en el Plan de Acción, <a href="${PA_URL}" target="_blank" rel="noopener">inicia sesión allá</a> en este navegador y luego <button onclick="cargarPlanes(true)">actualiza</button>.`}
+  const e=document.getElementById('psync');if(e){e.className='psync '+c;e.innerHTML='<span class="dot"></span><span>'+t+'</span>'}
+  const f=document.getElementById('fPlan');if(f){f.disabled=!PLANES;f.title=PLANES?'':'Requiere iniciar sesión en el Plan de Acción';if(!PLANES)f.value=''}
+}
+function planesListos(){
+  PLAN_N={};if(PLANES)Object.keys(PLANES).forEach(k=>{PLAN_N[pnorm(k)]=k});
+  planSyncUI();
+  if(typeof render==='function'&&window.__ready){render();const g=document.getElementById('dlg');if(g&&!g.hidden&&window.CURDOC)openDoc(window.CURDOC)}
+}
+function cargarPlanes(forzar){
+  if(!forzar){try{const c=JSON.parse(localStorage.getItem('nb_planes')||'null');if(c&&Object.keys(c).length){PLANES=c;PLAN_SRC='cache'}}catch(e){}}
+  if(!window.supabase){if(!PLANES)PLAN_SRC='login';planesListos();return}
+  if(!PLANES)PLAN_SRC='cargando';planSyncUI();
+  try{if(!SBP)SBP=window.supabase.createClient('https://lzljnszgqjxxufpkcolv.supabase.co','sb_publishable_U3BePGKe_qc4uBbHuL4_OA_8jbY0iMJ',{auth:{persistSession:true,autoRefreshToken:false,detectSessionInUrl:false,storageKey:'nb-plan-auth'}})}
+  catch(e){if(!PLANES)PLAN_SRC='login';planesListos();return}
+  SBP.auth.getSession().then(r=>{
+    if(!r||!r.data||!r.data.session){if(PLAN_SRC!=='cache')PLAN_SRC='login';planesListos();return}
+    return SBP.from('planes').select('medico_key,mr,objetivo,tacticas,inversion,actualizado').then(q=>{
+      if(q.error){console.warn('planes:',q.error);if(PLAN_SRC!=='cache')PLAN_SRC=PLANES?'cache':'error';planesListos();return}
+      const P={};
+      (q.data||[]).forEach(x=>{const o=x.tacticas||{};o.objetivo=x.objetivo||'';o._mr=x.mr||'';o._inv=pnum(x.inversion);o.fecha=x.actualizado?new Date(x.actualizado).toLocaleDateString('es-HN'):'';P[x.medico_key]=o});
+      PLANES=P;PLAN_SRC='live';PLAN_AT=new Date();planesListos();
+    });
+  }).catch(e=>{console.warn(e);if(!PLANES)PLAN_SRC='error';planesListos()});
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&PLAN_SRC!=='cargando'&&(!PLAN_AT||Date.now()-PLAN_AT>5*60*1000))cargarPlanes(true)});
+
 let ENV=store('nb_radar_envios')||{};
 const TACS=[['patrocinio','✈️','Patrocinio'],['mesa','🎙️','Mesa redonda'],['oneone','🤝','One to one'],['mm','🍼','Muestras médicas'],['material','📘','Material promocional']];
 const tacNm=id=>(TACS.find(x=>x[0]===id)||[0,'',id]).slice(1).join(' ');
 const envKeys=d=>d.pk&&d.pk.length?d.pk:['ALTA||'+d.id];
 const enviado=d=>envKeys(d).some(k=>ENV[k]);
+const pendEnv=d=>{if(!enviado(d))return false;if(!(d.pk&&d.pk.length))return true;const ps=plansOf(d);if(!ps.length)return true;const sent=[...new Set(envKeys(d).flatMap(k=>(ENV[k]&&ENV[k].tac)||[]))];return sent.some(t=>!ps.some(({p})=>p[t]&&p[t].activo))};
 const plain=h=>String(h).replace(/<[^>]+>/g,'');
 function toggleEnv(id){
   const d=D.docs.find(x=>x.id===id); if(!d)return;
-  const tac=[...document.querySelectorAll('#dlg [data-tac]:checked')].map(x=>x.dataset.tac);
+  const tac=[...document.querySelectorAll('#dlg [data-tac]:checked:not([data-plan])')].map(x=>x.dataset.tac);
   if(enviado(d))envKeys(d).forEach(k=>{delete ENV[k]});
   else envKeys(d).forEach(k=>{ENV[k]=d.pk&&d.pk.length?{o:plain(action(d)).replace(/\.$/,''),tac,t:Date.now()}:{alta:1,nombre:d.n,esp:d.esp,loc:d.loc,pais:d.pais,o:plain(action(d)).replace(/\.$/,''),tac,t:Date.now()}});
   store('nb_radar_envios',ENV);
@@ -247,11 +307,18 @@ function filtered(){
     if(lab&&!(d.labs.find(x=>x[0]===lab)))return false;
     if(seg&&!(d.bySeg[seg]>0))return false;
     const mrf=$('fMR').value; if(mrf&&!d.mr.includes(mrf))return false; const inv=$('fInv').value; if(inv==='intl'&&!d.intl)return false; if(inv==='any'&&!(d.pat>0))return false; if(inv==='none'&&d.pat>0)return false;
+    const pf=$('fPlan').value; if(pf==='con'&&!plansOf(d).length)return false; if(pf==='sin'&&plansOf(d).length)return false;
     if(cov==='in'&&!d.mr.length)return false; if(cov==='out'&&d.mr.length)return false;
     if(d.c26<mn)return false;
     if(q&&!(d.n.toLowerCase().includes(q)||d.dom.toLowerCase().includes(q)))return false;
     return true;
   });
+}
+function planBadge(d){
+  const ps=plansOf(d);if(!ps.length)return '';
+  const ts=[...tacIn(d)],u=ps.reduce((a,{p})=>a+planUsd(p),0);
+  const tt=ps.map(({p})=>'Plan'+(p._mr?' de '+p._mr:'')+(p.fecha?' · '+p.fecha:'')+': '+(tacsAct(p).map(tacNm).join(', ')||'sin tácticas activas')).join('\n');
+  return `<span class="inv pl" title="${esc(tt)}">📋 En Plan${ts.length?': '+ts.map(t=>TACS.find(x=>x[0]===t)[1]).join(''):''}${u?' · US$'+fmt(Math.round(u)):''}</span>`;
 }
 const labRx=(d,lab)=>lab?(d.labs.find(x=>x[0]===lab)||[0,0])[1]:d.c26;
 
@@ -294,7 +361,7 @@ function renderPres(){
   L.slice(0,ST.lim).forEach(d=>{
     const inP=!!PLAN[d.id];
     const cart=d.mr.length?`<span class="mr">${esc(d.mr.join(', '))}${d.tier?' · '+d.tier.replace('TIER ','T'):''}</span>`:(['Honduras','El Salvador'].includes(d.pais)?'<span class="mr no">fuera de cartera</span>':'');
-    const invb=(enviado(d)?'<span class="inv" style="background:#0a7a5a" title="Enviado al Plan de Acción">→ Plan de Acción</span>':'')+`${d.intl?'<span class="inv" title="Inversión Nutribén con apoyo internacional (EMC Extranjero, patrocinio '+d.pat+' año(s) 2024-26) y receta competencia">✈ Apoyo intl.</span>':(d.pat>0?'<span class="inv l" title="Patrocinio Nutribén '+d.pat+' año(s) 2024-26">Patrocinado</span>':'')}`;
+    const invb=(pendEnv(d)?'<span class="inv" style="background:#0a7a5a" title="Enviado al Plan de Acción; el visitador aún no lo completa">→ Plan de Acción</span>':'')+planBadge(d)+`${d.intl?'<span class="inv" title="Inversión Nutribén con apoyo internacional (EMC Extranjero, patrocinio '+d.pat+' año(s) 2024-26) y receta competencia">✈ Apoyo intl.</span>':(d.pat>0?'<span class="inv l" title="Patrocinio Nutribén '+d.pat+' año(s) 2024-26">Patrocinado</span>':'')}`;
     const dsh=d.sh26-d.sh25;
     h+=`<tr data-id="${d.id}" class="${inP?'sel':''}"><td><button class="add" data-add="${d.id}" aria-pressed="${inP}" title="${inP?'Quitar del plan':'Agregar al plan'}">${inP?'✓':'+'}</button></td>
       <td><div class="sc"><span class="num">${d.score}</span><div class="tr"><i style="width:${d.score}%"></i></div></div></td>
@@ -316,11 +383,17 @@ function renderPres(){
   $('v-pres').innerHTML=h;
   $('xlsP').onclick=()=>exportPres(L);
 }
+function planXls(d){
+  if(!(d.pk&&d.pk.length))return ['Sin ficha','',''];
+  if(!PLANES)return ['(sin datos)','',''];
+  const ps=plansOf(d);if(!ps.length)return ['Sin acciones',  '',0];
+  return ['Con acciones',[...tacIn(d)].map(tacNm).join(', '),Math.round(ps.reduce((a,{p})=>a+planUsd(p),0))];
+}
 function exportPres(L){
   if(!window.XLSX){alert('No se pudo cargar el generador de Excel.');return}
-  const H=['País','Localidad','Médico','Especialidad','Domicilio','Código Close Up','Visitador','Tier','Inversión Nutribén','Tipología','Puntaje','Cat. Close Up','Rx competencia/año','Rx competencia año anterior','Rx Nutribén/año','Participación Nutribén','Competidor principal','Participación del principal','Trim. may-26 competencia','Trim. ago-26 competencia','Acción sugerida'];
-  const rows=[H].concat(L.map(d=>[d.pais,d.loc,d.n,d.esp,d.dom,d.id,d.mr.join(', ')||'Fuera de cartera',d.tier||'',d.intl?'Apoyo internacional':(d.pat>0?'Patrocinado':''),TNAME[d.tipo],d.score,d.cat,d.c26,d.c25,d.nb26,Math.round(d.sh26*100)+'%',d.top,Math.round(d.topSh*100)+'%',d.cq5,d.cq8,action(d).replace(/<[^>]+>/g,'')]));
-  const ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=H.map((h,i)=>({wch:[12,18,32,18,34,14,18,8,18,20,8,8,10,10,10,10,16,10,10,10,60][i]}));
+  const H=['País','Localidad','Médico','Especialidad','Domicilio','Código Close Up','Visitador','Tier','Inversión Nutribén','Tipología','Puntaje','Cat. Close Up','Rx competencia/año','Rx competencia año anterior','Rx Nutribén/año','Participación Nutribén','Competidor principal','Participación del principal','Trim. may-26 competencia','Trim. ago-26 competencia','Acción sugerida','Plan de Acción','Tácticas en el Plan','Inversión en Plan (US$)'];
+  const rows=[H].concat(L.map(d=>[d.pais,d.loc,d.n,d.esp,d.dom,d.id,d.mr.join(', ')||'Fuera de cartera',d.tier||'',d.intl?'Apoyo internacional':(d.pat>0?'Patrocinado':''),TNAME[d.tipo],d.score,d.cat,d.c26,d.c25,d.nb26,Math.round(d.sh26*100)+'%',d.top,Math.round(d.topSh*100)+'%',d.cq5,d.cq8,action(d).replace(/<[^>]+>/g,''),...planXls(d)]));
+  const ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=H.map((h,i)=>({wch:[12,18,32,18,34,14,18,8,18,20,8,8,10,10,10,10,16,10,10,10,60,16,34,14][i]}));
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Prescriptores');
   XLSX.writeFile(wb,'Prescriptores_V06C_'+ST.pais.replace(/ /g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
@@ -342,8 +415,18 @@ function why(d){
   if(d.cnc>0)r.push(`Además receta ${d.cnc} Rx/año de productos sin equivalente Nutribén (suplementos, aminoácidos o antirreflujo), que no cuentan en el puntaje.`);
   return r;
 }
+function planBox(d){
+  const ps=plansOf(d);
+  if(!(d.pk&&d.pk.length))return '';
+  if(!ps.length)return PLANES?'<div class="pbox" style="background:#f7f7f4;border-color:#e0ddd2"><h4 style="color:#5b6b7a">Plan de Acción</h4>Tiene ficha en el Plan de Acción pero aún <b>sin acciones guardadas</b>.</div>':'';
+  return ps.map(({k,p})=>{
+    const det=tacsAct(p).map(id=>{const v=p[id]||{};let x=tacNm(id);if(id==='patrocinio'&&(v.evento||v.evento_txt))x+=' — '+esc(v.evento||v.evento_txt);if(pnum(v.monto))x+=' · US$ '+fmt(Math.round(pnum(v.monto)))+(id==='mm'?'/mes':'');return '<li>'+x+'</li>'}).join('');
+    const u=planUsd(p);
+    return `<div class="pbox"><h4>📋 Ya tiene acciones en el Plan de Acción${p._mr?' · '+esc(p._mr):''}</h4>${p.objetivo?`<div><b>Objetivo:</b> ${esc(p.objetivo)}</div>`:''}${det?`<ul style="margin:4px 0 0;padding-left:18px">${det}</ul>`:'<div class="meta">Plan guardado sin tácticas activas.</div>'}${u?`<div class="meta">Inversión planificada: US$ ${fmt(Math.round(u))}</div>`:''}${p.fecha?`<div class="meta">Actualizado ${esc(p.fecha)}</div>`:''}</div>`;
+  }).join('');
+}
 function openDoc(id){
-  const d=D.docs.find(x=>x.id===id); if(!d)return;
+  const d=D.docs.find(x=>x.id===id); if(!d)return; window.CURDOC=id;
   const inP=!!PLAN[id];
   let h=`<div class="panel" role="dialog" aria-modal="true" aria-label="${esc(d.n)}"><button class="x" id="xDlg" aria-label="Cerrar">×</button>
    <h2>${esc(d.n)}</h2><div class="meta">${esc(d.esp)}${d.esp2?' / '+esc(d.esp2):''} · ${esc(d.loc)}, ${esc(d.pais)} · Categoría Close Up ${d.cat} · código ${esc(d.id)}</div>
@@ -355,7 +438,7 @@ function openDoc(id){
   d.p.filter(r=>r[3]||r[4]).forEach(([prod,lab,seg,a25,a26,q5,q8])=>{
     h+=`<tr style="cursor:default"><td><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${LABC[lab]};margin-right:6px"></i>${esc(prod)}<div class="meta">${esc(lab)}</div></td><td class="meta">${esc(seg)}${SEGS[seg].w===0&&lab!=='Nutribén'?' · sin equivalente':''}</td><td class="r num">${a25}</td><td class="r num"><b>${a26}</b></td><td class="r num">${q5}</td><td class="r num">${q8}</td></tr>`;
   });
-  h+=`</tbody></table></div><div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dAdd">${inP?'Quitar del plan':'Agregar al plan de visita'}</button></div><div class="tacs"><div class="meta" style="width:100%">Tácticas que propones al visitador (opcional):</div>${TACS.map(([id,ic,n])=>{const e=ENV[envKeys(d)[0]];const on=e&&(e.tac||[]).includes(id);return `<label class="tac"><input type="checkbox" data-tac="${id}" ${on?'checked':''} ${enviado(d)?'disabled':''}> ${ic} ${n}</label>`}).join('')}</div><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn ${enviado(d)?'ghost':''}" id="dEnv">${enviado(d)?'Quitar envío al Plan de Acción':(d.pk&&d.pk.length?'Enviar al Plan de Acción':'Enviar para alta en Plan de Acción')}</button><button class="btn ghost" id="dClose">Cerrar</button></div><div class="meta" style="margin-top:8px">${d.pk&&d.pk.length?'Marca al médico en el Plan de Acción con el objetivo sugerido; el visitador lo completa allá.':'Este médico no tiene ficha en el Plan de Acción: queda como pendiente de alta para darlo de alta allá.'} Funciona en el mismo navegador donde abres el Plan de Acción.</div></div>`;
+  h+=`</tbody></table></div><div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dAdd">${inP?'Quitar del plan':'Agregar al plan de visita'}</button></div>${planBox(d)}<div class="tacs"><div class="meta" style="width:100%">${plansOf(d).length?'Tácticas nuevas que propones (las que ya están en el Plan no se tocan):':'Tácticas que propones al visitador (opcional):'}</div>${TACS.map(([id,ic,n])=>{const e=ENV[envKeys(d)[0]];const ip=tacIn(d).has(id);const on=ip||(e&&(e.tac||[]).includes(id));return `<label class="tac${ip?' inplan':''}"><input type="checkbox" data-tac="${id}" ${ip?'data-plan="1" ':''}${on?'checked':''} ${(enviado(d)||ip)?'disabled':''}> ${ic} ${n}${ip?' · ya en el Plan':''}</label>`}).join('')}</div><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn ${enviado(d)?'ghost':''}" id="dEnv">${enviado(d)?'Quitar envío al Plan de Acción':(d.pk&&d.pk.length?(plansOf(d).length?'Proponer tácticas nuevas al visitador':'Enviar al Plan de Acción'):'Enviar para alta en Plan de Acción')}</button><button class="btn ghost" id="dClose">Cerrar</button></div><div class="meta" style="margin-top:8px">${d.pk&&d.pk.length?'Marca al médico en el Plan de Acción con el objetivo sugerido; el visitador lo completa allá.':'Este médico no tiene ficha en el Plan de Acción: queda como pendiente de alta para darlo de alta allá.'} Funciona en el mismo navegador donde abres el Plan de Acción.</div></div>`;
   const g=$('dlg'); g.innerHTML=h; g.hidden=false;
   $('xDlg').onclick=$('dClose').onclick=()=>{g.hidden=true};
   $('dAdd').onclick=()=>{togglePlan(id);openDoc(id)};
@@ -484,13 +567,15 @@ document.addEventListener('input',e=>{
   if(t.dataset.o){PLAN[t.dataset.o].o=t.value;save();return}
   if(t.dataset.v){PLAN[t.dataset.v].v=+t.value||0;save();return}
   if(t.id==='fLab'){ST.sort='c26';ST.dir=-1;save()}
-  if(['fLoc','fEsp','fLab','fSeg','fCov','fMR','fInv','fMin','fQ'].includes(t.id)){ST.lim=60;render()}
+  if(['fLoc','fEsp','fLab','fSeg','fCov','fMR','fInv','fPlan','fMin','fQ'].includes(t.id)){ST.lim=60;render()}
 });
 document.addEventListener('change',e=>{if(e.target.dataset.v&&ST.tab==='plan')renderPlan()});
 Object.assign(window,{D,TIPOS,filtered,ST,PLAN});
 initFilters();
+window.__ready=0;
 $('nPlan').textContent=Object.keys(PLAN).length?'('+Object.keys(PLAN).length+')':'';
 render();
+window.__ready=1;
+planSyncUI();cargarPlanes();
 </script>
-
 </html>
