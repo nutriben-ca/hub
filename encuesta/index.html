@@ -178,7 +178,7 @@
   <div class="logo-badge">Nb</div>
   <div class="header-text">
     <h1>Nutriben · Potencial Recetario</h1>
-    <p>Herramienta de campo — equipo MR · v2.3</p>
+    <p>Herramienta de campo — equipo MR · v2.4</p>
   </div>
   <div class="sync-dot" id="sync-dot" title="Estado de conexión"></div>
 </div>
@@ -726,6 +726,8 @@ function acPick(mJson) {
   document.getElementById('ac-sel-meta').textContent = (m.ciudad||'') + (m.especialidad ? ' · '+m.especialidad : '') + (m.mr ? ' · MR: '+m.mr : '');
   // Rellenar campos
   if (m.ciudad) document.getElementById('s1-ciudad').value = m.ciudad;
+  // MR asignado en el panel: se muestra y se bloquea
+  setMrPanel(m.mr);
   if (m.especialidad) {
     const sel = document.getElementById('s1-especialidad');
     // Intento coincidencia con las opciones del select
@@ -844,8 +846,24 @@ document.addEventListener('click', e=>{
   if (!e.target.closest('#link-ac-wrap')) document.getElementById('link-ac-dropdown').style.display='none';
 });
 
+// Muestra el MR del panel en el campo y lo bloquea; sin MR en el panel queda editable
+function setMrPanel(mr) {
+  const f = document.getElementById('s1-mr');
+  if (mr) {
+    if (!f.readOnly) f.dataset.typed = f.value;       // guardar lo escrito por si se cambia de médico
+    f.value = 'MR asignado: ' + mr;
+    f.readOnly = true;
+    f.style.background = '#EEF3FF'; f.style.color = '#0033A1'; f.style.fontWeight = '600';
+  } else {
+    if (f.readOnly) f.value = f.dataset.typed || '';
+    f.readOnly = false;
+    f.style.background = ''; f.style.color = ''; f.style.fontWeight = '';
+  }
+}
+
 function acClear() {
   acSelected = null;
+  setMrPanel(null);
   document.getElementById('ac-wrap').style.display='block';
   document.getElementById('ac-selected').style.display='none';
   document.getElementById('ac-input').value='';
@@ -897,7 +915,9 @@ async function submitSurvey() {
   else                segmento='Sin Rx';
 
   // Quién llenó la encuesta en el teléfono (o "Médico (link)")
-  const capturadoPor = esLink() ? 'Médico (link)' : (document.getElementById('s1-mr').value.trim() || CFG.mr || '');
+  const fMr = document.getElementById('s1-mr');
+  const capturadoPor = esLink() ? 'Médico (link)'
+    : (CFG.mr || (!fMr.readOnly ? fMr.value.trim() : (fMr.dataset.typed||'').trim()) || '');
   // MR responsable: siempre el asignado en el panel; si el médico no está en el panel, quien capturó
   const mrNombre = (acSelected && acSelected.mr) || capturadoPor || 'MR';
 
