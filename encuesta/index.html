@@ -178,7 +178,7 @@
   <div class="logo-badge">Nb</div>
   <div class="header-text">
     <h1>Nutriben · Potencial Recetario</h1>
-    <p>Herramienta de campo — equipo MR · v2.4</p>
+    <p>Herramienta de campo — equipo MR · v2.5</p>
   </div>
   <div class="sync-dot" id="sync-dot" title="Estado de conexión"></div>
 </div>
@@ -597,7 +597,24 @@ async function sbSelect() {
 function setSyncDot(state) {
   const d = document.getElementById('sync-dot');
   d.className = 'sync-dot ' + state;
+  d.title = {online:'Conectado', error:'Sin conexión', syncing:'Conectando…'}[state] || 'Estado de conexión';
 }
+
+// Verifica la conexión con la base al abrir la app y periódicamente
+async function checkConexion() {
+  if (!CFG.url || !CFG.key) { setSyncDot('error'); return; }
+  if (!navigator.onLine) { setSyncDot('error'); return; }
+  const ctl = new AbortController(); const to = setTimeout(()=>ctl.abort(), 8000);
+  try {
+    const r = await fetch(sbRestUrl('medicos_panel?select=id&limit=1'), {headers: sbHeaders(), signal: ctl.signal});
+    setSyncDot(r.ok ? 'online' : 'error');
+  } catch(e) { setSyncDot('error'); }
+  finally { clearTimeout(to); }
+}
+window.addEventListener('online', ()=>checkConexion());
+window.addEventListener('offline', ()=>setSyncDot('error'));
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') checkConexion(); });
+setInterval(checkConexion, 60000);
 
 // ══════════════════════════════════════
 //  LOCAL FALLBACK
@@ -1102,6 +1119,7 @@ startAutoRefresh();
 initFromUrl();
 renderPendientes();
 syncPendientes();
+checkConexion();
 
 // Keepalive ping cada 4 dias para evitar que Supabase pause el proyecto
 setInterval(async()=>{
