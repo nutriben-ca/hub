@@ -590,12 +590,37 @@ function msBar(a){
   return `<div class="msb" title="MS TAM 08/26 ${pp(a.ms26)} (rango probable ${pp(Math.max(0,a.ms26-a.ci))}–${pp(a.ms26+a.ci)}); marca naranja = TAM 08/25 ${pp(a.ms25)}"><span class="ci" style="left:${lo}%;width:${hi-lo}%"></span><span class="v" style="width:${sc(a.ms26)}%"></span>${a.ms25!=null?`<span class="p" style="left:${sc(a.ms25)}%"></span>`:''}</div>`;
 }
 function renderVM(){
-  ST.vmode=ST.vmode||store('rp_vmode')||'reto';
-  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto del equipo</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  ST.vmode=ST.vmode||store('rp_vmode')||'rank';
+  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking share de su panel</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto del equipo</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  if(ST.vmode==='rank'){renderRank(sw);return}
   if(ST.vmode==='reto'){renderReto(sw);return}
   renderVMana(sw);
 }
 ST.vmeta=+(store('rp_vmeta')||5);
+function renderRank(sw){
+  const V=$('v-vm');
+  const all=[...new Set(D.docs.flatMap(d=>d.mr.map(m=>d.pais+'|'+m)))].map(k=>{const [p,vm]=k.split('|');
+    const a=aggDocs(D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)));return Object.assign(a,{vm,p,av:(a.ms26!=null&&a.ms25!=null)?a.ms26-a.ms25:null})})
+    .filter(a=>a.ms26!=null).sort((x,y)=>y.ms26-x.ms26);
+  const avr=[...all].sort((x,y)=>(y.av??-9)-(x.av??-9)).map(a=>a.vm);
+  const team=aggDocs(D.docs.filter(d=>d.mr.length));
+  const mx=Math.max(...all.map(a=>Math.max(a.ms26,a.ms25||0)))*1.1, sc=v=>(v/mx*100).toFixed(1);
+  const med=['🥇','🥈','🥉'];
+  let h=sw+`<p class="note" style="font-size:14px;max-width:none">De cada <b>100 recetas</b> que Close Up capta en los médicos del panel de cada visitador, ¿cuántas son de Nutribén? Solo cuentan recetas de segmentos donde Nutribén tiene producto. Honduras y El Salvador juntos.</p>
+  <div class="card" style="margin-top:12px;padding:6px 18px">`;
+  all.forEach((a,i)=>{
+    const n100=Math.round(a.ms26*100), ai=avr.indexOf(a.vm);
+    h+=`<div data-vmgo="${esc(a.vm)}" style="display:grid;grid-template-columns:44px minmax(150px,1.1fr) 3fr 150px;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Ver sus médicos">
+      <div style="font-family:var(--f-display);font-size:26px;font-weight:800;text-align:center">${med[i]||('#'+(i+1))}</div>
+      <div><div class="nm" style="font-size:16px">${esc(a.vm)}</div><div class="meta">${esc(a.p)} · ${fmt(a.nb26)} de ${fmt(a.base)} Rx captadas</div></div>
+      <div><div style="display:flex;align-items:baseline;gap:8px"><b style="font-family:var(--f-display);font-size:28px;font-variant-numeric:tabular-nums">${pp(a.ms26)}</b><span class="meta"><b style="color:var(--fg)">${n100}</b> de cada 100 recetas</span></div>
+        <div class="rbar" style="height:12px;margin-top:4px"><span class="f" style="width:${sc(a.ms26)}%"></span>${a.ms25!=null?`<span class="y" style="left:${sc(a.ms25)}%" title="hace un año"></span>`:''}<span class="m" style="left:${sc(team.ms26)}%;width:2px;background:var(--muted)" title="promedio del equipo"></span></div></div>
+      <div style="text-align:right"><div class="${a.av>=0?'ok':'ko'}" style="font-family:var(--f-display);font-size:20px;font-weight:800">${a.av==null?'—':(a.av>=0?'▲ +':'▼ ')+(a.av*100).toFixed(1)+' pts'}</div><div class="meta">vs. hace un año (${pp(a.ms25)}) · ${ai<3?med[ai]+' ':''}#${ai+1} en avance</div></div>
+    </div>`;
+  });
+  h+=`</div><p class="note">Barra azul = share de hoy (TAM 08/26) · marca oscura = hace un año (TAM 08/25) · línea gris = promedio del equipo (${pp(team.ms26)}). Si un médico tiene dos visitadores, cuenta en el panel de ambos. Toca un visitador para ver sus médicos.</p>`;
+  V.innerHTML=h;
+}
 function renderReto(sw){
   const V=$('v-vm');
   if(!D.docs.some(d=>d.pais===ST.pais&&d.mr.length)){V.innerHTML=sw+'<div class="empty">La cartera de visitadores solo está cruzada para Honduras y El Salvador. Cambia de país arriba.</div>';return}
@@ -711,7 +736,7 @@ document.addEventListener('click',e=>{
   if(t.id==='more'){ST.lim+=60;render();return}
   const sg=t.closest('tr[data-seg]'); if(sg){$('fSeg').value=sg.dataset.seg;ST.tab='pres';render();return}
   const vmo=t.closest('[data-vmode]'); if(vmo){ST.vmode=vmo.dataset.vmode;store('rp_vmode',ST.vmode);renderVM();return}
-  const vg=t.closest('[data-vmgo]'); if(vg){$('fMR').value=vg.dataset.vmgo;$('fCov').value='';ST.tab='pres';ST.lim=60;render();window.scrollTo({top:0,behavior:'smooth'});return}
+  const vg=t.closest('[data-vmgo]'); if(vg){const dp=D.docs.find(d=>d.mr.includes(vg.dataset.vmgo));if(dp&&dp.pais!==ST.pais){ST.pais=dp.pais;initFilters();save()}$('fMR').value=vg.dataset.vmgo;$('fCov').value='';ST.tab='pres';ST.lim=60;render();window.scrollTo({top:0,behavior:'smooth'});return}
   const vs=t.closest('th[data-vs]'); if(vs){const k=vs.dataset.vs;if(ST.vsort===k)ST.vdir*=-1;else{ST.vsort=k;ST.vdir=k==='vm'?1:-1}renderVM();return}
   const vr=t.closest('tr[data-vm]'); if(vr){ST.vm=ST.vm===vr.dataset.vm?'':vr.dataset.vm;renderVM();const c=$('vmdet');if(c&&ST.vm)c.scrollIntoView({behavior:'smooth',block:'nearest'});return}
   const tr=t.closest('tr[data-id]'); if(tr&&!$('dlg').contains(t)){openDoc(tr.dataset.id);return}
