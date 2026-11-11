@@ -549,6 +549,8 @@ function aggDocs(L){
   a.ms26=msOf(a.nb26,a.c26); a.ms25=msOf(a.nb25,a.c25); a.msq5=msOf(a.nq5,a.cq5); a.msq8=msOf(a.nq8,a.cq8);
   a.ci=a.ms26==null?null:1.96*Math.sqrt(a.ms26*(1-a.ms26)/a.base);
   a.pen=a.act?a.nbDocs/a.act:null;
+  /* Índice de Evolución = (1 + crec. Nutribén) / (1 + crec. mercado) × 100 */
+  const m25=a.nb25+a.c25; a.ei=(a.nb25>0&&m25>0&&a.base>0)?Math.round((a.nb26/a.nb25)/(a.base/m25)*100):null;
   return a;
 }
 function vmStats(){
@@ -578,7 +580,7 @@ function renderVM(){
   ST.vsort=ST.vsort||'ms26'; ST.vdir=ST.vdir||-1;
   const k=ST.vsort,dir=ST.vdir;
   out.sort((a,b)=>{const x=k==='vm'?a.vm:(a[k]??-1),y=k==='vm'?b.vm:(b[k]??-1);return (x>y?1:x<y?-1:0)*dir});
-  const C=[['vm','Visitador',''],['act','Médicos activos','r'],['base','Rx mercado TAM','r'],['nb26','Rx Nutribén','r'],['ms26','MS Rx TAM 08/25 → 08/26',''],['msq8','MS trimestre may → ago','r'],['pen','Médicos que recetan NB','r'],['gap','Brecha vs. sin visita en su zona','r'],['cob','Mercado de su zona en su cartera','r'],['ab','Dejaron NB','r']];
+  const C=[['vm','Visitador',''],['act','Médicos activos','r'],['base','Rx mercado TAM','r'],['nb26','Rx Nutribén','r'],['ms26','MS Rx TAM 08/25 → 08/26',''],['ei','Índice de evolución','r'],['msq8','MS trimestre may → ago','r'],['pen','Médicos que recetan NB','r'],['gap','Brecha vs. sin visita en su zona','r'],['cob','Mercado de su zona en su cartera','r'],['ab','Dejaron NB','r']];
   const row=(a,lab,attr,cls)=>{
     const qok=a.bq5>=VM_MIN_Q&&a.bq8>=VM_MIN_Q;
     const g=a.nb25?((a.nb26/a.nb25-1)*100).toFixed(0):null;
@@ -587,6 +589,7 @@ function renderVM(){
     <td class="r num">${fmt(a.base)}</td>
     <td class="r num">${fmt(a.nb26)}<div class="meta">${g===null?'nuevo':(g>0?'+':'')+g+'% vs 08/25'}</div></td>
     <td style="min-width:160px;white-space:nowrap"><span class="num">${pp(a.ms25)} → <b>${pp(a.ms26)}</b></span><div>${dpp(a.ms25,a.ms26)}</div>${msBar(a)}<div class="meta">± ${a.ci==null?'—':(a.ci*100).toFixed(1)} pp${a.base<150?' <span class="warn">base chica</span>':''}</div></td>
+    <td class="r">${a.ei==null?'<span class="fl">—</span>':`<b class="num ${a.ei>=100?'ok':'ko'}" style="font-size:15px">${a.ei}</b>`}<div class="meta">mercado ${(a.nb25+a.c25)?((a.base/(a.nb25+a.c25)-1)*100>=0?'+':'')+((a.base/(a.nb25+a.c25)-1)*100).toFixed(0)+'%':'—'}</div>${a.ei!=null&&a.nb25<30?'<div class="warn">base NB 08/25 = '+a.nb25+' Rx: inflado</div>':''}</td>
     <td class="r"><span class="num">${pp(a.msq5)} → ${pp(a.msq8)}</span>${qok?'':'<div class="warn">base &lt; '+VM_MIN_Q+' Rx: no concluyente</div>'}</td>
     <td class="r num">${fmt(a.nbDocs)}<div class="meta">${a.pen==null?'—':pct(a.pen)} de activos</div></td>
     <td class="r">${a.sv?`${a.gap==null?'—':`<span class="num ${a.gap>0?'ok':'ko'}">${a.gap>0?'+':''}${(a.gap*100).toFixed(1)} pp</span>`}<div class="meta">sin visita: ${pp(a.sv.ms26)} · ${fmt(a.sv.act)} méd.</div>`:''}</td>
@@ -597,13 +600,14 @@ function renderVM(){
     <div class="kpi"><b>${pp(cart.ms26)}</b><span>MS Rx en la cartera visitada (TAM 08/26) · ${dpp(cart.ms25,cart.ms26)}</span></div>
     <div class="kpi"><b>${pp(fuera.ms26)}</b><span>MS Rx en médicos sin visita · ${dpp(fuera.ms25,fuera.ms26)}</span></div>
     <div class="kpi"><b>${pp(pais.ms26)}</b><span>MS Rx total ${esc(ST.pais)}</span></div>
+    <div class="kpi"><b class="${(cart.ei??0)>=100?'ok':'ko'}">${cart.ei??'—'}</b><span>índice de evolución de la cartera · sin visita: ${fuera.ei??'—'}</span></div>
     <div class="kpi"><b>${pct(cart.base/(pais.base||1))}</b><span>del mercado convertible del país está en cartera</span></div>
   </div>
   <div class="tw"><table><thead><tr>${C.map(([id,l,c])=>`<th class="${c}" data-vs="${id}">${l}${ST.vsort===id?(ST.vdir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>`;
   out.forEach(a=>{h+=row(a,esc(a.vm),`data-vm="${esc(a.vm)}"`,ST.vm===a.vm?'vsel':'')});
   h+=row(cart,'Total cartera','', 'vtot')+row(fuera,'Sin visitador','', 'vtot');
   h+='</tbody></table></div>';
-  h+=`<p class="note"><b>MS Rx</b> = recetas de Nutribén ÷ (Nutribén + competencia en segmentos donde Nutribén tiene producto), igual que el KPI de participación. Usa toda la cartera del visitador; los filtros de arriba no aplican aquí. Un médico con dos visitadores cuenta para ambos. <b>*</b> = departamento compartido con otro visitador. <b>± pp</b> es el margen de error aproximado al 95%: Close Up es una muestra, y con pocas recetas el MS de un visitador puede moverse varios puntos sin que nada haya cambiado. <b>Brecha vs. sin visita</b> compara su cartera con los médicos no visitados de sus mismos departamentos; no prueba que la visita cause la diferencia, porque la cartera se armó eligiendo médicos. Toca un visitador para ver el detalle.</p>`;
+  h+=`<p class="note"><b>MS Rx</b> = recetas de Nutribén ÷ (Nutribén + competencia en segmentos donde Nutribén tiene producto), igual que el KPI de participación. Usa toda la cartera del visitador; los filtros de arriba no aplican aquí. Un médico con dos visitadores cuenta para ambos. <b>*</b> = departamento compartido con otro visitador. <b>Índice de evolución</b> = (1 + crecimiento de Rx Nutribén) ÷ (1 + crecimiento del mercado convertible) × 100: arriba de 100, Nutribén creció más rápido que el mercado en esa cartera (equivale a MS 08/26 ÷ MS 08/25 × 100). Con menos de 30 Rx de Nutribén en 08/25 el índice se infla y no sirve para comparar. <b>± pp</b> es el margen de error aproximado al 95%: Close Up es una muestra, y con pocas recetas el MS de un visitador puede moverse varios puntos sin que nada haya cambiado. <b>Brecha vs. sin visita</b> compara su cartera con los médicos no visitados de sus mismos departamentos; no prueba que la visita cause la diferencia, porque la cartera se armó eligiendo médicos. Toca un visitador para ver el detalle.</p>`;
   const a=out.find(x=>x.vm===ST.vm);
   if(a){
     const segs=Object.entries(a.segs).filter(([,v])=>v>0).sort((x,y)=>y[1]-x[1]);
@@ -612,8 +616,8 @@ function renderVM(){
     <div class="grid2"><div><h3 style="font-size:13px">Dónde está la competencia en su cartera</h3><div style="overflow-x:auto"><table style="min-width:0"><thead><tr><th>Segmento</th><th>Responde con</th><th class="r">Rx compet.</th><th class="r">% de su cartera</th></tr></thead><tbody>`;
     segs.forEach(([s,v])=>{h+=`<tr style="cursor:default"><td><b>${esc(s)}</b></td><td class="meta">${esc(SEGS[s].nb)}</td><td class="r num">${fmt(v)}</td><td class="r num">${pct(v/(a.c26||1))}</td></tr>`});
     h+=`</tbody></table></div><p class="note">Close Up no separa casi ninguna receta de Nutribén por producto, así que el MS no se puede abrir por segmento; esta tabla muestra dónde está el volumen a ganar. Competidor principal en su cartera: <b>${esc(a.top[0])}</b> (${pct(a.top[1]/(a.c26||1))}).</p></div>
-    <div><h3 style="font-size:13px">Sus médicos con más recetas de competencia</h3><div style="overflow-x:auto"><table style="min-width:0"><thead><tr><th>Médico</th><th class="r">Rx compet.</th><th class="r">MS NB</th><th>Tipología</th></tr></thead><tbody>`;
-    top.forEach(d=>{h+=`<tr data-id="${d.id}"><td><span class="nm">${esc(d.n)}</span><div class="meta">${esc(d.loc)} · ${esc(d.esp)}</div></td><td class="r num">${d.c26}</td><td class="r num">${pct(d.sh26)}<div class="meta">08/25: ${pct(d.sh25)}</div></td><td><span class="pill t-${d.tipo}">${TNAME[d.tipo]}</span></td></tr>`});
+    <div><h3 style="font-size:13px">Sus médicos con más recetas de competencia</h3><div style="overflow-x:auto"><table style="min-width:0"><thead><tr><th>Médico</th><th class="r">Rx compet.</th><th class="r">MS NB</th><th class="r">IE</th><th>Tipología</th></tr></thead><tbody>`;
+    top.forEach(d=>{h+=`<tr data-id="${d.id}"><td><span class="nm">${esc(d.n)}</span><div class="meta">${esc(d.loc)} · ${esc(d.esp)}</div></td><td class="r num">${d.c26}</td><td class="r num">${pct(d.sh26)}<div class="meta">08/25: ${pct(d.sh25)}</div></td><td class="r num">${(d.nb25>0&&d.c25+d.nb25>0&&d.c26+d.nb26>0)?Math.round(d.sh26/d.sh25*100):'—'}</td><td><span class="pill t-${d.tipo}">${TNAME[d.tipo]}</span></td></tr>`});
     h+=`</tbody></table></div><p class="note">${fmt(a.ap)} abiertos a cambio y ${fmt(a.ab)} que dejaron Nutribén en su cartera.</p></div></div></div>`;
   }
   V.innerHTML=h;
