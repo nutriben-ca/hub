@@ -554,7 +554,7 @@ function renderComp(){
 
 /* ---------- productividad por visitador ---------- */
 /* MS = Rx Nutribén / (Rx Nutribén + Rx competencia en segmentos con equivalente Nutribén). Misma base que el KPI de participación. */
-const TOPE_MED=0.10;
+const TOPE_MED=0.10, CONV_MIN=3, CONV_SH=0.40;
 const msOf=(nb,c)=>(nb+c)?nb/(nb+c):null;
 const pp=v=>v==null?'—':(v*100).toFixed(1)+'%';
 const dpp=(a,b)=>(a==null||b==null)?'<span class="fl">—</span>':`<span class="num ${b>a?'ok':b<a?'ko':'fl'}">${b>=a?'+':''}${((b-a)*100).toFixed(1)} pp</span>`;
@@ -570,6 +570,10 @@ function aggDocs(L){
   /* Share con tope: ningún médico aporta más de TOPE_MED (10) de cada 100 recetas del panel, para premiar la amplitud y no a un solo médico */
   const b25=a.nb25+a.c25, cap26=TOPE_MED*a.base, cap25=TOPE_MED*b25; let k26=0,k25=0,top=null;
   L.forEach(d=>{k26+=Math.min(d.nb26,cap26);k25+=Math.min(d.nb25,cap25);if(!top||d.nb26>top.nb26)top=d});
+  /* Plan 40-40: médico relevante = ≥3 Rx convertibles al año; convertido = Nutribén ≥40% de sus recetas */
+  const rel=L.filter(d=>d.nb26+d.c26>=CONV_MIN); a.rel=rel.length; a.conv=rel.filter(d=>d.nb26/(d.nb26+d.c26)>=CONV_SH).length;
+  a.cerca=rel.filter(d=>d.nb26>0&&d.nb26/(d.nb26+d.c26)<CONV_SH).sort((x,y)=>y.nb26/(y.nb26+y.c26)-x.nb26/(x.nb26+x.c26));
+  a.convMeta=Math.ceil(CONV_SH*a.rel);
   a.k26=k26; a.msc26=a.base?k26/a.base:null; a.msc25=b25?k25/b25:null; a.top1=top; a.top1f=a.nb26&&top?top.nb26/a.nb26:0;
   a.pen=a.act?a.nbDocs/a.act:null;
   /* Índice de Evolución = (1 + crec. Nutribén) / (1 + crec. mercado) × 100 */
@@ -598,7 +602,7 @@ function msBar(a){
 }
 function renderVM(){
   ST.vmode=ST.vmode||store('rp_vmode')||'rank';
-  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto y Plan 40%</button><button data-vmode="prem" aria-pressed="${ST.vmode==='prem'}">💰 Premio bimestral 2027</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Plan 40-40</button><button data-vmode="prem" aria-pressed="${ST.vmode==='prem'}">💰 Premio bimestral 2027</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
   if(ST.vmode==='rank'){renderRank(sw);return}
   if(ST.vmode==='reto'){renderReto(sw);return}
   if(ST.vmode==='prem'){renderPrem(sw);return}
@@ -614,22 +618,24 @@ const P40_UMBRAL=0.40, P40_META=0.40, P40_CONV=0.5; /* Plan 40%: share < 40% →
    agrega aquí la lectura que se reemplaza (corte, año y share de cada visitador) ANTES de cambiar los datos, y pon el corte nuevo en meta.corte / meta.anio. */
 const PREM_USD=100, PREM_TOPE=300, PREM_DESDE=2027, PREM_LECT=6, PREM_BASE='TAM 12/26'; /* la lectura TAM 12/26 fija el récord inicial */
 const PREM_HIST=[
-  {corte:'TAM 08/26',anio:2026,sh:{"Fernando Cruz": 0.1134, "Fernando Urrutia": 0.1856, "Kristel Madrid": 0.2119, "Antonieta": 0.1293, "Osman Carbajal": 0.0819, "Ricardo Flores": 0.2654}}
+  {corte:'TAM 08/26',anio:2026,sh:{"Fernando Cruz": 0.1134, "Fernando Urrutia": 0.1856, "Kristel Madrid": 0.2119, "Antonieta": 0.1293, "Osman Carbajal": 0.0819, "Ricardo Flores": 0.2654},cv:{"Fernando Cruz": 3, "Fernando Urrutia": 5, "Kristel Madrid": 3, "Antonieta": 6, "Osman Carbajal": 2, "Ricardo Flores": 9}}
 ];
 const usd=v=>'US$ '+Math.round(v).toLocaleString('es-HN');
 function premLecturas(){
-  const cur={corte:D.meta.corte||'TAM 08/26',anio:+(D.meta.anio||2026),sh:{},live:true};
-  [...new Set(D.docs.flatMap(d=>d.mr.map(m=>d.pais+'|'+m)))].forEach(k=>{const [p,vm]=k.split('|');const a=aggDocs(D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)));if(a.msc26!=null)cur.sh[vm]=a.msc26});
+  const cur={corte:D.meta.corte||'TAM 08/26',anio:+(D.meta.anio||2026),sh:{},cv:{},live:true};
+  [...new Set(D.docs.flatMap(d=>d.mr.map(m=>d.pais+'|'+m)))].forEach(k=>{const [p,vm]=k.split('|');const a=aggDocs(D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)));if(a.msc26!=null){cur.sh[vm]=a.msc26;cur.cv[vm]=a.conv}});
   const L=PREM_HIST.filter(x=>x.corte!==cur.corte);L.push(cur);return L;
 }
 function premCalc(L,vm){
   const bi=L.findIndex(r=>r.corte===PREM_BASE);
-  let rec=null,acc=0;const out=L.map((r,i)=>{const v=r.sh[vm];
+  let rec=null,acc=0,pcv=null;const out=L.map((r,i)=>{const v=r.sh[vm], cv=r.cv?r.cv[vm]:null, prev=pcv; if(cv!=null)pcv=cv;
     if(v==null)return {v:null};
-    if(bi<0||i<bi)return {v,pre:true};
-    if(rec==null){rec=v;return {v,base:true,rec}}
-    if(v>rec){const pts=Math.round((v-rec)*1000)/10,pay=Math.min(PREM_TOPE,pts*PREM_USD);rec=v;acc+=pay;return {v,pts,pay,rec}}
-    return {v,pts:0,pay:0,below:v-rec,rec}});
+    if(bi<0||i<bi)return {v,cv,pre:true};
+    if(rec==null){rec=v;return {v,cv,base:true,rec}}
+    /* condición 40-40: si bajó el número de médicos convertidos vs. la lectura anterior, no cobra y su récord no se mueve */
+    if(v>rec&&prev!=null&&cv!=null&&cv<prev)return {v,cv,pts:Math.round((v-rec)*1000)/10,pay:0,blocked:true,prev,rec};
+    if(v>rec){const pts=Math.round((v-rec)*1000)/10,pay=Math.min(PREM_TOPE,pts*PREM_USD);rec=v;acc+=pay;return {v,cv,pts,pay,rec}}
+    return {v,cv,pts:0,pay:0,below:v-rec,rec}});
   return {out,rec,acc};
 }
 function renderPrem(sw){
@@ -644,24 +650,25 @@ function renderPrem(sw){
       <li><b>Cada lectura:</b> si supera su récord, cobra ${usd(PREM_USD)} por punto (máximo ${usd(PREM_TOPE)}) y ese share es su nuevo récord.</li>
       <li><b>Si baja:</b> no cobra. Vuelve a cobrar solo cuando pase su mejor marca.</li>
       <li><b>Share con tope por médico:</b> ningún médico cuenta más de 10 de cada 100 recetas del panel.</li>
+      <li><b>Condición 40-40:</b> solo cobra si su número de <b>médicos convertidos</b> (Nutribén ≥40% de sus recetas) <b>no bajó</b> respecto a la lectura anterior. Si bajó, no cobra y su récord no se mueve: puede cobrarlo en la siguiente lectura si recupera a sus médicos.</li>
     </ol>
     <p class="note"><b>Ejemplo:</b> récord 12.0% → lectura 13.5% cobra ${usd(150)} (récord 13.5%) → lectura 12.8% no cobra → lectura 14.0% cobra ${usd(50)}, solo por lo que pasó de 13.5% → lectura 18.0% cobra ${usd(PREM_TOPE)} (tope; récord 18.0%).</p></div>
   <div class="card"><h3>Pago por lectura</h3><table style="min-width:0"><thead><tr><th>Supera su récord por…</th><th class="r">Cobra</th></tr></thead><tbody>`;
   [[0,'No lo supera'],[0.5],[1],[2],[3],[5]].forEach(([g,l])=>{const v=Math.min(PREM_TOPE,g*PREM_USD);h+=`<tr style="cursor:default"><td>${l||'<b>+'+g+'</b> '+(g===1?'punto':'puntos')}</td><td class="r num ${v?'ok':''}"><b>${v?usd(v):'—'}</b>${g*PREM_USD>PREM_TOPE?' <span class="meta">tope</span>':''}</td></tr>`});
   h+=`</tbody></table><p class="note">Proporcional con un decimal. Máximo posible al año: ${usd(PREM_TOPE*PREM_LECT)} por visitador (${PREM_LECT} lecturas con tope).</p></div></div>`;
   /* estado actual */
-  h+=`<div class="card" style="margin-top:12px"><h3>${started?'Estado del premio · lectura '+esc(cur.corte):'Antes de arrancar: si la lectura actual ('+esc(cur.corte)+') fuera la base'}</h3><div style="overflow-x:auto"><table style="min-width:760px"><thead><tr><th>Visitador</th><th class="r">Share actual</th><th class="r">Récord vigente</th><th class="r">Esta lectura</th><th class="r">Acumulado ${PREM_DESDE}</th><th class="r">Para cobrar el tope en la próxima</th></tr></thead><tbody>`;
+  h+=`<div class="card" style="margin-top:12px"><h3>${started?'Estado del premio · lectura '+esc(cur.corte):'Antes de arrancar: si la lectura actual ('+esc(cur.corte)+') fuera la base'}</h3><div style="overflow-x:auto"><table style="min-width:760px"><thead><tr><th>Visitador</th><th class="r">Share actual</th><th class="r">Médicos convertidos</th><th class="r">Récord vigente</th><th class="r">Esta lectura</th><th class="r">Acumulado ${PREM_DESDE}</th><th class="r">Para cobrar el tope en la próxima</th></tr></thead><tbody>`;
   let tA=0,tL=0;
   vms.forEach(vm=>{const c=premCalc(L,vm),last=c.out[c.out.length-1],rec=started?c.rec:cur.sh[vm];
     const a=aggDocs(D.docs.filter(d=>d.mr.includes(vm)&&d.pais===pais(vm))), rx=Math.ceil((rec+PREM_TOPE/PREM_USD/100)*a.base-a.k26);
     tA+=c.acc; tL+=last.pay||0;
-    const st=!started?'<span class="meta">arranca en '+PREM_DESDE+'</span>':last.base?'<span class="meta">fija récord inicial</span>':last.pay?`<b class="ok">${usd(last.pay)}</b><div class="meta">+${last.pts} pts</div>`:`<span class="ko">${usd(0)}</span><div class="meta">${last.below<0?((last.below)*100).toFixed(1)+' pts bajo su récord':'igual a su récord'}</div>`;
-    h+=`<tr data-vmgo="${esc(vm)}"><td><span class="nm">${esc(vm)}</span><div class="meta">${esc(pais(vm))}</div></td><td class="r num"><b>${pp(cur.sh[vm])}</b></td><td class="r num">${pp(rec)}</td><td class="r">${st}</td><td class="r num"><b>${started?usd(c.acc):'—'}</b></td><td class="r num">llegar a ${pp(rec+PREM_TOPE/PREM_USD/100)}<div class="meta">≈ ${Math.max(1,rx)} Rx Nutribén más que hoy (TAM)</div></td></tr>`});
-  h+=`<tr class="vtot"><td>Total equipo</td><td></td><td></td><td class="r num">${started?usd(tL):'—'}</td><td class="r num">${started?usd(tA):'—'}</td><td></td></tr></tbody></table></div>
+    const st=!started?'<span class="meta">arranca en '+PREM_DESDE+'</span>':last.base?'<span class="meta">fija récord inicial</span>':last.blocked?`<span class="ko">${usd(0)}</span><div class="warn">superó su récord (+${last.pts} pts) pero bajó de ${last.prev} a ${last.cv} convertidos</div>`:last.pay?`<b class="ok">${usd(last.pay)}</b><div class="meta">+${last.pts} pts</div>`:`<span class="ko">${usd(0)}</span><div class="meta">${last.below<0?((last.below)*100).toFixed(1)+' pts bajo su récord':'igual a su récord'}</div>`;
+    h+=`<tr data-vmgo="${esc(vm)}"><td><span class="nm">${esc(vm)}</span><div class="meta">${esc(pais(vm))}</div></td><td class="r num"><b>${pp(cur.sh[vm])}</b></td><td class="r num">${cur.cv[vm]??'—'}</td><td class="r num">${pp(rec)}</td><td class="r">${st}</td><td class="r num"><b>${started?usd(c.acc):'—'}</b></td><td class="r num">llegar a ${pp(rec+PREM_TOPE/PREM_USD/100)}<div class="meta">≈ ${Math.max(1,rx)} Rx Nutribén más que hoy (TAM)</div></td></tr>`});
+  h+=`<tr class="vtot"><td>Total equipo</td><td></td><td></td><td></td><td class="r num">${started?usd(tL):'—'}</td><td class="r num">${started?usd(tA):'—'}</td><td></td></tr></tbody></table></div>
   <p class="note">El share es con tope por médico (ningún médico cuenta más de 10 de cada 100 recetas). Close Up es una muestra: entre una lectura y otra el TAM solo cambia 2 meses de datos, así que los movimientos por lectura suelen ser de 1 a 2 puntos.</p></div>`;
   /* historial */
   h+=`<div class="card" style="margin-top:12px"><h3>Historial de lecturas</h3><div style="overflow-x:auto"><table style="min-width:600px"><thead><tr><th>Visitador</th>${L.map(r=>`<th class="r">${esc(r.corte)}${r.corte===PREM_BASE?'<div class="meta" style="text-transform:none">récord inicial</div>':L.findIndex(x=>x.corte===PREM_BASE)<0||L.indexOf(r)<L.findIndex(x=>x.corte===PREM_BASE)?'<div class="meta" style="text-transform:none">referencia</div>':''}</th>`).join('')}</tr></thead><tbody>`;
-  vms.forEach(vm=>{const c=premCalc(L,vm);h+=`<tr style="cursor:default"><td><span class="nm">${esc(vm)}</span></td>${c.out.map(o=>`<td class="r num">${o.v==null?'—':pp(o.v)}${o.base?'<div class="meta">récord inicial</div>':o.pay?`<div class="ok" style="font-weight:700">${usd(o.pay)}</div>`:o.pre?'':'<div class="meta">sin pago</div>'}</td>`).join('')}</tr>`});
+  vms.forEach(vm=>{const c=premCalc(L,vm);h+=`<tr style="cursor:default"><td><span class="nm">${esc(vm)}</span></td>${c.out.map(o=>`<td class="r num">${o.v==null?'—':pp(o.v)}${o.cv!=null?'<div class="meta">'+o.cv+' conv.</div>':''}${o.base?'<div class="meta">récord inicial</div>':o.blocked?'<div class="warn">bloqueado 40-40</div>':o.pay?`<div class="ok" style="font-weight:700">${usd(o.pay)}</div>`:o.pre?'':'<div class="meta">sin pago</div>'}</td>`).join('')}</tr>`});
   h+=`</tbody></table></div><p class="note">Cada lectura se guarda congelada al llegar el siguiente corte de Close Up, para que cambios posteriores de cartera no alteren lo ya pagado. Las lecturas anteriores a ${PREM_BASE} son solo referencia y no pagan.</p></div>`;
   V.innerHTML=h;
 }
@@ -705,7 +712,7 @@ function renderReto(sw){
   const rk=[...out].sort((x,y)=>y.av-x.av);
   const med=['🥇','🥈','🥉'];
   const goal=ST.vmeta/100;
-  let h=sw+`<p class="note" style="font-size:14px;max-width:none">Quien tiene menos de 40% de share entra al <b>Plan de acción 40%</b>: su meta es llegar a 40% de las recetas que genera su panel. Los demás compiten <b>contra su propio número</b>, no contra los demás. La meta es subir <b>${ST.vmeta} puntos</b> su market share de recetas; la tarjeta dice cuántas recetas le faltan y a qué médicos ir por ellas. El orden y las medallas son por <b>avance del último año</b>, no por quién tiene más share.</p><div class="rgrid">`;
+  let h=sw+`<p class="note" style="font-size:14px;max-width:none">Quien tiene menos de 40% de share entra al <b>Plan 40-40</b>: <b>meta 1</b>, llegar a 40% de las recetas que genera su panel; <b>meta 2</b>, que 40% de sus médicos estén convertidos (Nutribén con 40% o más de sus recetas, contando médicos con ${CONV_MIN}+ recetas al año). Los demás compiten <b>contra su propio número</b>, no contra los demás. La meta es subir <b>${ST.vmeta} puntos</b> su market share de recetas; la tarjeta dice cuántas recetas le faltan y a qué médicos ir por ellas. El orden y las medallas son por <b>avance del último año</b>, no por quién tiene más share.</p><div class="rgrid">`;
   rk.forEach((a,i)=>{
     if(a.msc26==null)return;
     const p40=a.msc26<P40_UMBRAL, meta=p40?P40_META:Math.min(1,a.msc26+goal), falta=Math.max(1,Math.ceil(meta*a.base-a.k26));
@@ -713,13 +720,17 @@ function renderReto(sw){
     let cand=a.L.filter(d=>['abierto','desarrollo','abandono','riesgo'].includes(d.tipo)&&d.c26>0).sort((x,y)=>y.c26-x.c26);
     let nNeed=0; if(p40){let cum=0;for(const d of cand){cum+=d.c26*P40_CONV;nNeed++;if(cum>=falta)break} if(cand.reduce((s,d)=>s+d.c26*P40_CONV,0)<falta)nNeed=-1; cand=cand.slice(0,Math.max(3,Math.min(8,nNeed>0?nNeed:8)))} else cand=cand.slice(0,3);
     const pool=cand.reduce((s,d)=>s+d.c26,0);
-    h+=`<div class="rc"><h3><span>${esc(a.vm)}</span><span class="rk">${med[i]||''} #${i+1} en avance</span></h3>${p40?`<div class="pill t-abandono" style="align-self:flex-start;font-size:12px">Plan de acción 40% · share bajo 40%</div>`:''}
-    <div class="rnums"><div><span>Hoy</span><b>${pp(a.msc26)}</b></div><div><span>${p40?'Meta Plan 40%':'Meta'}</span><b style="color:var(--accent-fg)">${pp(meta)}</b></div></div>
+    h+=`<div class="rc"><h3><span>${esc(a.vm)}</span><span class="rk">${med[i]||''} #${i+1} en avance</span></h3>${p40?`<div class="pill t-abandono" style="align-self:flex-start;font-size:12px">Plan 40-40</div>`:''}
+    <div class="rnums"><div><span>Hoy</span><b>${pp(a.msc26)}</b></div><div><span>${p40?'Meta 1 · recetas':'Meta'}</span><b style="color:var(--accent-fg)">${pp(meta)}</b></div></div>
     <div><div class="rbar"><span class="f" style="width:${sc(a.msc26)}%"></span>${a.msc25!=null?`<span class="y" style="left:${sc(a.msc25)}%" title="hace un año"></span>`:''}<span class="m" style="left:${sc(meta)}%" title="meta"></span></div>
     <div class="meta" style="margin-top:4px">Hace un año: ${pp(a.msc25)} · avance <span class="${a.av>=0?'ok':'ko'}" style="font-weight:700">${a.av>=0?'+':''}${(a.av*100).toFixed(1)} pts</span></div></div>
     <div class="meta">Recetan Nutribén <b style="color:var(--fg)">${a.nbDocs} de ${a.act}</b> médicos activos${a.top1&&a.top1f>0.4?` · <span class="warn">${esc(a.top1.n)} aporta ${pct(a.top1f)} de sus Rx Nutribén</span>`:''}</div>
+    ${p40?`<div style="background:var(--surface2);border-radius:10px;padding:8px 12px"><div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700">Meta 2 · médicos convertidos</div><div style="white-space:nowrap"><b style="font-family:var(--f-display);font-size:26px">${a.conv}</b> <span class="meta">de ${a.rel} médicos · meta <b style="color:var(--accent-fg)">${a.convMeta}</b></span></div>
+      <div class="rbar" style="height:10px;margin-top:4px"><span class="f" style="width:${a.rel?Math.min(100,a.conv/a.rel/0.6*100):0}%"></span><span class="m" style="left:${CONV_SH/0.6*100}%"></span></div>
+      <div class="meta" style="margin-top:4px">${a.conv>=a.convMeta?'<b class="ok">Meta 2 cumplida</b>':`Le faltan <b style="color:var(--fg)">${a.convMeta-a.conv} médicos</b> donde Nutribén tenga 40% o más de sus recetas`}</div>
+      ${a.cerca.length?`<div class="meta" style="margin-top:6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Más cerca de convertirse</div>${a.cerca.slice(0,4).map(d=>`<div class="rdoc" data-open="${d.id}" style="padding:4px 0"><span>${esc(d.n)}</span><span class="num" style="white-space:nowrap">${pct(d.nb26/(d.nb26+d.c26))} NB · ${d.nb26}/${d.nb26+d.c26} Rx</span></div>`).join('')}`:''}</div>`:''}
     <div class="rgo">Le faltan <b>${falta}</b> recetas de Nutribén al año<div class="meta" style="color:inherit">de ${fmt(a.base)} recetas que se escriben en su cartera</div></div>
-    <div><div class="meta" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Dónde ganarlas</div>
+    <div><div class="meta" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">${p40?'Dónde ganar más recetas':'Dónde ganarlas'}</div>
     ${cand.map(d=>`<div class="rdoc" data-open="${d.id}"><span><b>${esc(d.n)}</b><div class="meta">${d.best?'Desplazar '+esc(d.best.prod):esc(d.esp)} · <span class="pill t-${d.tipo}">${TNAME[d.tipo]}</span></div></span><span class="num" style="white-space:nowrap">${d.c26} Rx</span></div>`).join('')||'<div class="meta">Sin médicos abiertos en su cartera: el reto es defender.</div>'}
     ${p40?(nNeed>0?`<div class="meta"><b style="color:var(--fg)">Necesita convertir ${nNeed} médicos</b>: ganando la mitad de las recetas de competencia de cada uno, en este orden, llega a 40%. Hito sugerido: ${pp((a.msc26+P40_META)/2)} al primer semestre.</div>`:`<div class="meta"><b style="color:var(--bad)">Con los médicos abiertos de su panel no alcanza 40%</b> aunque gane la mitad de sus recetas: necesita médicos nuevos o atacar a los leales a un competidor.</div>`)
       :(pool?`<div class="meta">Estos ${cand.length} médicos escriben ${pool} recetas de competencia: ganando ${pct(Math.min(1,falta/pool))} de ellas llega a la meta.</div>`:'')}</div>
