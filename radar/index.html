@@ -115,6 +115,14 @@ tbody tr.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:28px;text-align:center;color:var(--muted);margin-top:12px}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
 textarea{font:inherit;font-size:12.5px;width:100%;min-width:160px;background:var(--surface2);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 6px;resize:vertical}
+.ok{color:var(--good)} .ko{color:var(--bad)}
+.msb{position:relative;height:10px;width:120px;background:var(--surface2);border-radius:3px;margin-top:3px}
+.msb .ci{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--navy) 18%,transparent)}
+.msb .v{position:absolute;top:2px;bottom:2px;left:0;background:var(--navy);border-radius:2px}
+.msb .p{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--accent)}
+tr.vsel td{background:color-mix(in srgb,var(--sky) 12%,transparent)}
+tr.vtot td{font-weight:700;background:var(--surface2);cursor:default}
+.warn{font-size:10.5px;font-weight:700;color:var(--warn)}
 @media (prefers-reduced-motion:no-preference){.panel{animation:sl .18s ease-out}@keyframes sl{from{transform:translateX(30px);opacity:.6}}}
 </style>
 
@@ -148,12 +156,14 @@ textarea{font:inherit;font-size:12.5px;width:100%;min-width:160px;background:var
     <button role="tab" id="tb-pres" aria-selected="true">Prescriptores</button>
     <button role="tab" id="tb-comp" aria-selected="false">Competidores</button>
     <button role="tab" id="tb-plan" aria-selected="false">Plan de visita <span id="nPlan" class="num"></span></button>
+    <button role="tab" id="tb-vm" aria-selected="false">Productividad VM</button>
     <button role="tab" id="tb-met" aria-selected="false">Cómo se calcula</button>
   </div>
 
   <section id="v-pres"></section>
   <section id="v-comp" hidden></section>
   <section id="v-plan" hidden></section>
+  <section id="v-vm" hidden></section>
   <section id="v-met" hidden></section>
 </div>
 <div id="dlg" class="dlg" hidden></div>
@@ -523,6 +533,92 @@ function renderComp(){
   $('v-comp').innerHTML=h;
 }
 
+
+/* ---------- productividad por visitador ---------- */
+/* MS = Rx Nutribén / (Rx Nutribén + Rx competencia en segmentos con equivalente Nutribén). Misma base que el KPI de participación. */
+const msOf=(nb,c)=>(nb+c)?nb/(nb+c):null;
+const pp=v=>v==null?'—':(v*100).toFixed(1)+'%';
+const dpp=(a,b)=>(a==null||b==null)?'<span class="fl">—</span>':`<span class="num ${b>a?'ok':b<a?'ko':'fl'}">${b>=a?'+':''}${((b-a)*100).toFixed(1)} pp</span>`;
+const VM_MIN_Q=60; /* base trimestral mínima para leer el MS del trimestre */
+function aggDocs(L){
+  const a={n:L.length,act:0,nbDocs:0,nb26:0,nb25:0,c26:0,c25:0,nq5:0,nq8:0,cq5:0,cq8:0,ab:0,ap:0,labs:{},segs:{}};
+  L.forEach(d=>{a.nb26+=d.nb26;a.nb25+=d.nb25;a.c26+=d.c26;a.c25+=d.c25;a.nq5+=d.nbq5;a.nq8+=d.nbq8;a.cq5+=d.cq5;a.cq8+=d.cq8;
+    if(d.c26+d.nb26>0)a.act++; if(d.nb26>0)a.nbDocs++; if(d.tipo==='abandono')a.ab++; if(d.tipo==='abierto')a.ap++;
+    d.labs.forEach(([l,v])=>{a.labs[l]=(a.labs[l]||0)+v}); Object.entries(d.bySeg).forEach(([s,v])=>{a.segs[s]=(a.segs[s]||0)+v})});
+  a.base=a.nb26+a.c26; a.bq5=a.nq5+a.cq5; a.bq8=a.nq8+a.cq8;
+  a.ms26=msOf(a.nb26,a.c26); a.ms25=msOf(a.nb25,a.c25); a.msq5=msOf(a.nq5,a.cq5); a.msq8=msOf(a.nq8,a.cq8);
+  a.ci=a.ms26==null?null:1.96*Math.sqrt(a.ms26*(1-a.ms26)/a.base);
+  a.pen=a.act?a.nbDocs/a.act:null;
+  return a;
+}
+function vmStats(){
+  const P=D.docs.filter(d=>d.pais===ST.pais);
+  const vms=[...new Set(P.flatMap(d=>d.mr))];
+  const out=vms.map(vm=>{
+    const L=P.filter(d=>d.mr.includes(vm)), a=aggDocs(L);
+    const lc={};L.forEach(d=>{lc[d.loc]=(lc[d.loc]||0)+1});
+    const zona=Object.keys(lc).filter(l=>lc[l]>=L.length*0.1).sort((x,y)=>lc[y]-lc[x]);
+    const Z=P.filter(d=>zona.includes(d.loc)), sv=aggDocs(Z.filter(d=>!d.mr.length)), zt=aggDocs(Z);
+    const shared=zona.filter(l=>P.some(d=>d.loc===l&&d.mr.length&&!d.mr.includes(vm)));
+    return Object.assign(a,{vm,L,zona,lc,shared,sv,cob:zt.base?a.base/zt.base:null,gap:(a.ms26!=null&&sv.ms26!=null)?a.ms26-sv.ms26:null,
+      top:Object.entries(a.labs).sort((x,y)=>y[1]-x[1])[0]||['—',0]});
+  });
+  return {out,cart:aggDocs(P.filter(d=>d.mr.length)),fuera:aggDocs(P.filter(d=>!d.mr.length)),pais:aggDocs(P)};
+}
+function msBar(a){
+  if(a.ms26==null)return '';
+  const sc=v=>Math.max(0,Math.min(100,v/0.6*100)); /* escala 0–60% */
+  const lo=sc(a.ms26-a.ci),hi=sc(a.ms26+a.ci);
+  return `<div class="msb" title="MS TAM 08/26 ${pp(a.ms26)} (rango probable ${pp(Math.max(0,a.ms26-a.ci))}–${pp(a.ms26+a.ci)}); marca naranja = TAM 08/25 ${pp(a.ms25)}"><span class="ci" style="left:${lo}%;width:${hi-lo}%"></span><span class="v" style="width:${sc(a.ms26)}%"></span>${a.ms25!=null?`<span class="p" style="left:${sc(a.ms25)}%"></span>`:''}</div>`;
+}
+function renderVM(){
+  const V=$('v-vm');
+  if(!D.docs.some(d=>d.pais===ST.pais&&d.mr.length)){V.innerHTML='<div class="empty">La cartera de visitadores solo está cruzada para Honduras y El Salvador. Cambia de país arriba.</div>';return}
+  const {out,cart,fuera,pais}=vmStats();
+  ST.vsort=ST.vsort||'ms26'; ST.vdir=ST.vdir||-1;
+  const k=ST.vsort,dir=ST.vdir;
+  out.sort((a,b)=>{const x=k==='vm'?a.vm:(a[k]??-1),y=k==='vm'?b.vm:(b[k]??-1);return (x>y?1:x<y?-1:0)*dir});
+  const C=[['vm','Visitador',''],['act','Médicos activos','r'],['base','Rx mercado TAM','r'],['nb26','Rx Nutribén','r'],['ms26','MS Rx TAM 08/25 → 08/26',''],['msq8','MS trimestre may → ago','r'],['pen','Médicos que recetan NB','r'],['gap','Brecha vs. sin visita en su zona','r'],['cob','Mercado de su zona en su cartera','r'],['ab','Dejaron NB','r']];
+  const row=(a,lab,attr,cls)=>{
+    const qok=a.bq5>=VM_MIN_Q&&a.bq8>=VM_MIN_Q;
+    const g=a.nb25?((a.nb26/a.nb25-1)*100).toFixed(0):null;
+    return `<tr ${attr} class="${cls}"><td style="min-width:150px"><span class="nm" style="white-space:nowrap">${lab}</span>${a.zona?`<div class="meta">${a.zona.map(z=>esc(z)+(a.shared.includes(z)?'*':'')).join(', ')}</div>`:''}</td>
+    <td class="r num">${fmt(a.act)}<div class="meta">de ${fmt(a.n)}</div></td>
+    <td class="r num">${fmt(a.base)}</td>
+    <td class="r num">${fmt(a.nb26)}<div class="meta">${g===null?'nuevo':(g>0?'+':'')+g+'% vs 08/25'}</div></td>
+    <td style="min-width:160px;white-space:nowrap"><span class="num">${pp(a.ms25)} → <b>${pp(a.ms26)}</b></span><div>${dpp(a.ms25,a.ms26)}</div>${msBar(a)}<div class="meta">± ${a.ci==null?'—':(a.ci*100).toFixed(1)} pp${a.base<150?' <span class="warn">base chica</span>':''}</div></td>
+    <td class="r"><span class="num">${pp(a.msq5)} → ${pp(a.msq8)}</span>${qok?'':'<div class="warn">base &lt; '+VM_MIN_Q+' Rx: no concluyente</div>'}</td>
+    <td class="r num">${fmt(a.nbDocs)}<div class="meta">${a.pen==null?'—':pct(a.pen)} de activos</div></td>
+    <td class="r">${a.sv?`${a.gap==null?'—':`<span class="num ${a.gap>0?'ok':'ko'}">${a.gap>0?'+':''}${(a.gap*100).toFixed(1)} pp</span>`}<div class="meta">sin visita: ${pp(a.sv.ms26)} · ${fmt(a.sv.act)} méd.</div>`:''}</td>
+    <td class="r num">${a.cob==null?'':pct(a.cob)}</td>
+    <td class="r num">${fmt(a.ab)}</td></tr>`;
+  };
+  let h=`<div class="kpis" style="margin-top:12px">
+    <div class="kpi"><b>${pp(cart.ms26)}</b><span>MS Rx en la cartera visitada (TAM 08/26) · ${dpp(cart.ms25,cart.ms26)}</span></div>
+    <div class="kpi"><b>${pp(fuera.ms26)}</b><span>MS Rx en médicos sin visita · ${dpp(fuera.ms25,fuera.ms26)}</span></div>
+    <div class="kpi"><b>${pp(pais.ms26)}</b><span>MS Rx total ${esc(ST.pais)}</span></div>
+    <div class="kpi"><b>${pct(cart.base/(pais.base||1))}</b><span>del mercado convertible del país está en cartera</span></div>
+  </div>
+  <div class="tw"><table><thead><tr>${C.map(([id,l,c])=>`<th class="${c}" data-vs="${id}">${l}${ST.vsort===id?(ST.vdir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>`;
+  out.forEach(a=>{h+=row(a,esc(a.vm),`data-vm="${esc(a.vm)}"`,ST.vm===a.vm?'vsel':'')});
+  h+=row(cart,'Total cartera','', 'vtot')+row(fuera,'Sin visitador','', 'vtot');
+  h+='</tbody></table></div>';
+  h+=`<p class="note"><b>MS Rx</b> = recetas de Nutribén ÷ (Nutribén + competencia en segmentos donde Nutribén tiene producto), igual que el KPI de participación. Usa toda la cartera del visitador; los filtros de arriba no aplican aquí. Un médico con dos visitadores cuenta para ambos. <b>*</b> = departamento compartido con otro visitador. <b>± pp</b> es el margen de error aproximado al 95%: Close Up es una muestra, y con pocas recetas el MS de un visitador puede moverse varios puntos sin que nada haya cambiado. <b>Brecha vs. sin visita</b> compara su cartera con los médicos no visitados de sus mismos departamentos; no prueba que la visita cause la diferencia, porque la cartera se armó eligiendo médicos. Toca un visitador para ver el detalle.</p>`;
+  const a=out.find(x=>x.vm===ST.vm);
+  if(a){
+    const segs=Object.entries(a.segs).filter(([,v])=>v>0).sort((x,y)=>y[1]-x[1]);
+    const top=a.L.filter(d=>d.c26+d.nb26>0).sort((x,y)=>y.c26-x.c26).slice(0,12);
+    h+=`<div class="card" id="vmdet" style="margin-top:12px"><div class="toolbar" style="margin-top:0;justify-content:space-between"><h3 style="margin:0">${esc(a.vm)} · ${fmt(a.n)} médicos en cartera</h3><button class="btn ghost" data-vmgo="${esc(a.vm)}">Ver sus médicos en Prescriptores →</button></div>
+    <div class="grid2"><div><h3 style="font-size:13px">Dónde está la competencia en su cartera</h3><div style="overflow-x:auto"><table style="min-width:0"><thead><tr><th>Segmento</th><th>Responde con</th><th class="r">Rx compet.</th><th class="r">% de su cartera</th></tr></thead><tbody>`;
+    segs.forEach(([s,v])=>{h+=`<tr style="cursor:default"><td><b>${esc(s)}</b></td><td class="meta">${esc(SEGS[s].nb)}</td><td class="r num">${fmt(v)}</td><td class="r num">${pct(v/(a.c26||1))}</td></tr>`});
+    h+=`</tbody></table></div><p class="note">Close Up no separa casi ninguna receta de Nutribén por producto, así que el MS no se puede abrir por segmento; esta tabla muestra dónde está el volumen a ganar. Competidor principal en su cartera: <b>${esc(a.top[0])}</b> (${pct(a.top[1]/(a.c26||1))}).</p></div>
+    <div><h3 style="font-size:13px">Sus médicos con más recetas de competencia</h3><div style="overflow-x:auto"><table style="min-width:0"><thead><tr><th>Médico</th><th class="r">Rx compet.</th><th class="r">MS NB</th><th>Tipología</th></tr></thead><tbody>`;
+    top.forEach(d=>{h+=`<tr data-id="${d.id}"><td><span class="nm">${esc(d.n)}</span><div class="meta">${esc(d.loc)} · ${esc(d.esp)}</div></td><td class="r num">${d.c26}</td><td class="r num">${pct(d.sh26)}<div class="meta">08/25: ${pct(d.sh25)}</div></td><td><span class="pill t-${d.tipo}">${TNAME[d.tipo]}</span></td></tr>`});
+    h+=`</tbody></table></div><p class="note">${fmt(a.ap)} abiertos a cambio y ${fmt(a.ab)} que dejaron Nutribén en su cartera.</p></div></div></div>`;
+  }
+  V.innerHTML=h;
+}
+
 /* ---------- metodología ---------- */
 function renderMet(){
   const segs=Object.entries(SEGS).filter(([s])=>s!=='Nutribén');
@@ -546,9 +642,9 @@ function renderMet(){
 /* ---------- control ---------- */
 function render(){
   $('nDocs').textContent=fmt(D.docs.filter(d=>d.pais===ST.pais).length)+' de '+fmt(D.docs.length);
-  ['pres','comp','plan','met'].forEach(t=>{$('v-'+t).hidden=ST.tab!==t;$('tb-'+t).setAttribute('aria-selected',ST.tab===t)});
+  ['pres','comp','plan','vm','met'].forEach(t=>{$('v-'+t).hidden=ST.tab!==t;$('tb-'+t).setAttribute('aria-selected',ST.tab===t)});
   if(ST.tab==='pres')renderPres(); else kpis(filtered());
-  if(ST.tab==='comp')renderComp(); if(ST.tab==='plan')renderPlan(); if(ST.tab==='met')renderMet();
+  if(ST.tab==='comp')renderComp(); if(ST.tab==='plan')renderPlan(); if(ST.tab==='met')renderMet(); if(ST.tab==='vm')renderVM();
 }
 document.addEventListener('click',e=>{
   const t=e.target;
@@ -559,6 +655,9 @@ document.addEventListener('click',e=>{
   const th=t.closest('th[data-s]'); if(th){const k=th.dataset.s;if(ST.sort===k)ST.dir*=-1;else{ST.sort=k;ST.dir=k==='n'||k==='cat'?1:-1}save();render();return}
   if(t.id==='more'){ST.lim+=60;render();return}
   const sg=t.closest('tr[data-seg]'); if(sg){$('fSeg').value=sg.dataset.seg;ST.tab='pres';render();return}
+  const vg=t.closest('[data-vmgo]'); if(vg){$('fMR').value=vg.dataset.vmgo;$('fCov').value='';ST.tab='pres';ST.lim=60;render();window.scrollTo({top:0,behavior:'smooth'});return}
+  const vs=t.closest('th[data-vs]'); if(vs){const k=vs.dataset.vs;if(ST.vsort===k)ST.vdir*=-1;else{ST.vsort=k;ST.vdir=k==='vm'?1:-1}renderVM();return}
+  const vr=t.closest('tr[data-vm]'); if(vr){ST.vm=ST.vm===vr.dataset.vm?'':vr.dataset.vm;renderVM();const c=$('vmdet');if(c&&ST.vm)c.scrollIntoView({behavior:'smooth',block:'nearest'});return}
   const tr=t.closest('tr[data-id]'); if(tr&&!$('dlg').contains(t)){openDoc(tr.dataset.id);return}
   const tb=t.closest('[role=tab]'); if(tb){ST.tab=tb.id.slice(3);render();return}
 });
