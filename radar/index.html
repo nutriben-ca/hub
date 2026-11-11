@@ -122,6 +122,22 @@ textarea{font:inherit;font-size:12.5px;width:100%;min-width:160px;background:var
 .msb .p{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--accent)}
 tr.vsel td{background:color-mix(in srgb,var(--sky) 12%,transparent)}
 tr.vtot td{font-weight:700;background:var(--surface2);cursor:default}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:12px}
+.rc{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.rc h3{font-family:var(--f-display);font-size:18px;margin:0;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rc .rk{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.rnums{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rnums div{background:var(--surface2);border-radius:10px;padding:8px 12px}
+.rnums b{display:block;font-family:var(--f-display);font-size:30px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+.rnums span{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.rbar{position:relative;height:14px;background:var(--surface2);border-radius:7px}
+.rbar .f{position:absolute;left:0;top:0;bottom:0;background:var(--navy);border-radius:7px}
+.rbar .m{position:absolute;top:-4px;bottom:-4px;width:3px;background:var(--accent);border-radius:2px}
+.rbar .y{position:absolute;top:2px;bottom:2px;width:2px;background:color-mix(in srgb,var(--fg) 45%,transparent)}
+.rgo{background:color-mix(in srgb,var(--accent) 16%,transparent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:10px;padding:10px 12px;font-size:15px}
+.rgo b{font-family:var(--f-display);font-size:22px}
+.rdoc{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line);cursor:pointer;font-size:13px}
+.rdoc:hover{background:color-mix(in srgb,var(--sky) 6%,transparent)}
 .warn{font-size:10.5px;font-weight:700;color:var(--warn)}
 @media (prefers-reduced-motion:no-preference){.panel{animation:sl .18s ease-out}@keyframes sl{from{transform:translateX(30px);opacity:.6}}}
 </style>
@@ -574,8 +590,43 @@ function msBar(a){
   return `<div class="msb" title="MS TAM 08/26 ${pp(a.ms26)} (rango probable ${pp(Math.max(0,a.ms26-a.ci))}–${pp(a.ms26+a.ci)}); marca naranja = TAM 08/25 ${pp(a.ms25)}"><span class="ci" style="left:${lo}%;width:${hi-lo}%"></span><span class="v" style="width:${sc(a.ms26)}%"></span>${a.ms25!=null?`<span class="p" style="left:${sc(a.ms25)}%"></span>`:''}</div>`;
 }
 function renderVM(){
+  ST.vmode=ST.vmode||store('rp_vmode')||'reto';
+  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto del equipo</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  if(ST.vmode==='reto'){renderReto(sw);return}
+  renderVMana(sw);
+}
+ST.vmeta=+(store('rp_vmeta')||5);
+function renderReto(sw){
   const V=$('v-vm');
-  if(!D.docs.some(d=>d.pais===ST.pais&&d.mr.length)){V.innerHTML='<div class="empty">La cartera de visitadores solo está cruzada para Honduras y El Salvador. Cambia de país arriba.</div>';return}
+  if(!D.docs.some(d=>d.pais===ST.pais&&d.mr.length)){V.innerHTML=sw+'<div class="empty">La cartera de visitadores solo está cruzada para Honduras y El Salvador. Cambia de país arriba.</div>';return}
+  const {out,cart}=vmStats();
+  out.forEach(a=>{a.av=(a.ms26!=null&&a.ms25!=null)?a.ms26-a.ms25:-1});
+  const rk=[...out].sort((x,y)=>y.av-x.av);
+  const med=['🥇','🥈','🥉'];
+  const goal=ST.vmeta/100;
+  let h=sw+`<p class="note" style="font-size:14px;max-width:none">Cada visitador compite <b>contra su propio número</b>, no contra los demás. La meta es subir <b>${ST.vmeta} puntos</b> su market share de recetas; la tarjeta dice cuántas recetas le faltan y a qué médicos ir por ellas. El orden y las medallas son por <b>avance del último año</b>, no por quién tiene más share.</p><div class="rgrid">`;
+  rk.forEach((a,i)=>{
+    if(a.ms26==null)return;
+    const meta=Math.min(1,a.ms26+goal), falta=Math.max(1,Math.ceil(meta*a.base-a.nb26));
+    const mx=Math.max(meta,a.ms25||0)*1.15, sc=v=>(v/mx*100).toFixed(1);
+    const cand=a.L.filter(d=>['abierto','desarrollo','abandono','riesgo'].includes(d.tipo)&&d.c26>0).sort((x,y)=>y.c26-x.c26).slice(0,3);
+    const pool=cand.reduce((s,d)=>s+d.c26,0);
+    h+=`<div class="rc"><h3><span>${esc(a.vm)}</span><span class="rk">${med[i]||''} #${i+1} en avance</span></h3>
+    <div class="rnums"><div><span>Hoy</span><b>${pp(a.ms26)}</b></div><div><span>Meta</span><b style="color:var(--accent-fg)">${pp(meta)}</b></div></div>
+    <div><div class="rbar"><span class="f" style="width:${sc(a.ms26)}%"></span>${a.ms25!=null?`<span class="y" style="left:${sc(a.ms25)}%" title="hace un año"></span>`:''}<span class="m" style="left:${sc(meta)}%" title="meta"></span></div>
+    <div class="meta" style="margin-top:4px">Hace un año: ${pp(a.ms25)} · avance <span class="${a.av>=0?'ok':'ko'}" style="font-weight:700">${a.av>=0?'+':''}${(a.av*100).toFixed(1)} pts</span></div></div>
+    <div class="rgo">Le faltan <b>${falta}</b> recetas de Nutribén al año<div class="meta" style="color:inherit">de ${fmt(a.base)} recetas que se escriben en su cartera</div></div>
+    <div><div class="meta" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Dónde ganarlas</div>
+    ${cand.map(d=>`<div class="rdoc" data-open="${d.id}"><span><b>${esc(d.n)}</b><div class="meta">${d.best?'Desplazar '+esc(d.best.prod):esc(d.esp)} · <span class="pill t-${d.tipo}">${TNAME[d.tipo]}</span></div></span><span class="num" style="white-space:nowrap">${d.c26} Rx</span></div>`).join('')||'<div class="meta">Sin médicos abiertos en su cartera: el reto es defender.</div>'}
+    ${pool?`<div class="meta">Estos ${cand.length} médicos escriben ${pool} recetas de competencia: ganando ${pct(Math.min(1,falta/pool))} de ellas llega a la meta.</div>`:''}</div>
+    <button class="btn ghost" data-vmgo="${esc(a.vm)}">Ver todos sus médicos →</button></div>`;
+  });
+  h+=`</div><p class="note">Market share = recetas de Nutribén ÷ todas las recetas de los segmentos donde Nutribén tiene producto (Close Up, TAM 08/26). "Le faltan" supone que cada receta ganada se le quita a la competencia. Equipo ${esc(ST.pais)}: ${pp(cart.ms25)} → ${pp(cart.ms26)}. Los números se actualizan cuando llega un nuevo corte de Close Up.</p>`;
+  V.innerHTML=h;
+}
+function renderVMana(sw){
+  const V=$('v-vm');
+  if(!D.docs.some(d=>d.pais===ST.pais&&d.mr.length)){V.innerHTML=sw+'<div class="empty">La cartera de visitadores solo está cruzada para Honduras y El Salvador. Cambia de país arriba.</div>';return}
   const {out,cart,fuera,pais}=vmStats();
   ST.vsort=ST.vsort||'ms26'; ST.vdir=ST.vdir||-1;
   const k=ST.vsort,dir=ST.vdir;
@@ -596,7 +647,7 @@ function renderVM(){
     <td class="r num">${a.cob==null?'':pct(a.cob)}</td>
     <td class="r num">${fmt(a.ab)}</td></tr>`;
   };
-  let h=`<div class="kpis" style="margin-top:12px">
+  let h=sw+`<div class="kpis" style="margin-top:12px">
     <div class="kpi"><b>${pp(cart.ms26)}</b><span>MS Rx en la cartera visitada (TAM 08/26) · ${dpp(cart.ms25,cart.ms26)}</span></div>
     <div class="kpi"><b>${pp(fuera.ms26)}</b><span>MS Rx en médicos sin visita · ${dpp(fuera.ms25,fuera.ms26)}</span></div>
     <div class="kpi"><b>${pp(pais.ms26)}</b><span>MS Rx total ${esc(ST.pais)}</span></div>
@@ -659,6 +710,7 @@ document.addEventListener('click',e=>{
   const th=t.closest('th[data-s]'); if(th){const k=th.dataset.s;if(ST.sort===k)ST.dir*=-1;else{ST.sort=k;ST.dir=k==='n'||k==='cat'?1:-1}save();render();return}
   if(t.id==='more'){ST.lim+=60;render();return}
   const sg=t.closest('tr[data-seg]'); if(sg){$('fSeg').value=sg.dataset.seg;ST.tab='pres';render();return}
+  const vmo=t.closest('[data-vmode]'); if(vmo){ST.vmode=vmo.dataset.vmode;store('rp_vmode',ST.vmode);renderVM();return}
   const vg=t.closest('[data-vmgo]'); if(vg){$('fMR').value=vg.dataset.vmgo;$('fCov').value='';ST.tab='pres';ST.lim=60;render();window.scrollTo({top:0,behavior:'smooth'});return}
   const vs=t.closest('th[data-vs]'); if(vs){const k=vs.dataset.vs;if(ST.vsort===k)ST.vdir*=-1;else{ST.vsort=k;ST.vdir=k==='vm'?1:-1}renderVM();return}
   const vr=t.closest('tr[data-vm]'); if(vr){ST.vm=ST.vm===vr.dataset.vm?'':vr.dataset.vm;renderVM();const c=$('vmdet');if(c&&ST.vm)c.scrollIntoView({behavior:'smooth',block:'nearest'});return}
@@ -667,6 +719,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.id==='vmMeta'){const v=Math.max(1,Math.min(20,+t.value||5));ST.vmeta=v;store('rp_vmeta',v);clearTimeout(window._vmT);window._vmT=setTimeout(()=>{renderVM();const i=$('vmMeta');if(i){i.focus();i.setSelectionRange&&0}},500);return}
   if(t.dataset.o){PLAN[t.dataset.o].o=t.value;save();return}
   if(t.dataset.v){PLAN[t.dataset.v].v=+t.value||0;save();return}
   if(t.id==='fLab'){ST.sort='c26';ST.dir=-1;save()}
