@@ -612,7 +612,7 @@ const P40_UMBRAL=0.40, P40_META=0.40, P40_CONV=0.5; /* Plan 40%: share < 40% →
    · Si baja, no cobra; recuperar lo perdido no se paga: solo cuenta superar su mejor marca.
    PREM_HIST guarda congelado el share (con tope) de cada lectura. AL ACTUALIZAR EL RADAR CON UN CORTE NUEVO DE CLOSE UP:
    agrega aquí la lectura que se reemplaza (corte, año y share de cada visitador) ANTES de cambiar los datos, y pon el corte nuevo en meta.corte / meta.anio. */
-const PREM_USD=100, PREM_TOPE=300, PREM_DESDE=2027, PREM_LECT=6;
+const PREM_USD=100, PREM_TOPE=300, PREM_DESDE=2027, PREM_LECT=6, PREM_BASE='TAM 12/26'; /* la lectura TAM 12/26 fija el récord inicial */
 const PREM_HIST=[
   {corte:'TAM 08/26',anio:2026,sh:{"Fernando Cruz": 0.1134, "Fernando Urrutia": 0.1856, "Kristel Madrid": 0.2119, "Antonieta": 0.1293, "Osman Carbajal": 0.0819, "Ricardo Flores": 0.2654}}
 ];
@@ -623,9 +623,10 @@ function premLecturas(){
   const L=PREM_HIST.filter(x=>x.corte!==cur.corte);L.push(cur);return L;
 }
 function premCalc(L,vm){
-  let rec=null,acc=0;const out=L.map(r=>{const v=r.sh[vm];
+  const bi=L.findIndex(r=>r.corte===PREM_BASE);
+  let rec=null,acc=0;const out=L.map((r,i)=>{const v=r.sh[vm];
     if(v==null)return {v:null};
-    if(r.anio<PREM_DESDE)return {v,pre:true};
+    if(bi<0||i<bi)return {v,pre:true};
     if(rec==null){rec=v;return {v,base:true,rec}}
     if(v>rec){const pts=Math.round((v-rec)*1000)/10,pay=Math.min(PREM_TOPE,pts*PREM_USD);rec=v;acc+=pay;return {v,pts,pay,rec}}
     return {v,pts:0,pay:0,below:v-rec,rec}});
@@ -633,13 +634,13 @@ function premCalc(L,vm){
 }
 function renderPrem(sw){
   const V=$('v-vm');
-  const L=premLecturas(), cur=L[L.length-1], started=L.some(r=>r.anio>=PREM_DESDE);
+  const L=premLecturas(), cur=L[L.length-1], started=L.some(r=>r.corte===PREM_BASE);
   const vms=Object.keys(cur.sh).sort((a,b)=>cur.sh[b]-cur.sh[a]);
   const pais=vm=>(D.docs.find(d=>d.mr.includes(vm))||{}).pais||'';
   let h=sw+`<div class="act" style="font-size:15.5px;margin-top:12px"><b>Premio bimestral ${PREM_DESDE} · regla de nuevo récord.</b> En cada lectura de Close Up (cada 2 meses) el visitador cobra <b>${usd(PREM_USD)} por cada punto que su share supere su mejor marca</b>, con tope de <b>${usd(PREM_TOPE)} por lectura</b>. Si baja no cobra, y recuperar lo perdido no se paga: solo cuenta superar su récord. Así cada punto de crecimiento se paga una sola vez.</div>
   <div class="grid2"><div class="card"><h3>Cómo funciona</h3>
     <ol style="margin:0;padding-left:20px;font-size:13.5px;line-height:1.6">
-      <li><b>Récord inicial:</b> su share en la primera lectura de ${PREM_DESDE}.</li>
+      <li><b>Récord inicial:</b> su share en la lectura ${PREM_BASE} (primera que llega en ${PREM_DESDE}); todo lo que crezca desde ahí cuenta.</li>
       <li><b>Cada lectura:</b> si supera su récord, cobra ${usd(PREM_USD)} por punto (máximo ${usd(PREM_TOPE)}) y ese share es su nuevo récord.</li>
       <li><b>Si baja:</b> no cobra. Vuelve a cobrar solo cuando pase su mejor marca.</li>
       <li><b>Share con tope por médico:</b> ningún médico cuenta más de 10 de cada 100 recetas del panel.</li>
@@ -659,9 +660,9 @@ function renderPrem(sw){
   h+=`<tr class="vtot"><td>Total equipo</td><td></td><td></td><td class="r num">${started?usd(tL):'—'}</td><td class="r num">${started?usd(tA):'—'}</td><td></td></tr></tbody></table></div>
   <p class="note">El share es con tope por médico (ningún médico cuenta más de 10 de cada 100 recetas). Close Up es una muestra: entre una lectura y otra el TAM solo cambia 2 meses de datos, así que los movimientos por lectura suelen ser de 1 a 2 puntos.</p></div>`;
   /* historial */
-  h+=`<div class="card" style="margin-top:12px"><h3>Historial de lecturas</h3><div style="overflow-x:auto"><table style="min-width:600px"><thead><tr><th>Visitador</th>${L.map(r=>`<th class="r">${esc(r.corte)}${r.anio<PREM_DESDE?'<div class="meta" style="text-transform:none">referencia</div>':''}</th>`).join('')}</tr></thead><tbody>`;
+  h+=`<div class="card" style="margin-top:12px"><h3>Historial de lecturas</h3><div style="overflow-x:auto"><table style="min-width:600px"><thead><tr><th>Visitador</th>${L.map(r=>`<th class="r">${esc(r.corte)}${r.corte===PREM_BASE?'<div class="meta" style="text-transform:none">récord inicial</div>':L.findIndex(x=>x.corte===PREM_BASE)<0||L.indexOf(r)<L.findIndex(x=>x.corte===PREM_BASE)?'<div class="meta" style="text-transform:none">referencia</div>':''}</th>`).join('')}</tr></thead><tbody>`;
   vms.forEach(vm=>{const c=premCalc(L,vm);h+=`<tr style="cursor:default"><td><span class="nm">${esc(vm)}</span></td>${c.out.map(o=>`<td class="r num">${o.v==null?'—':pp(o.v)}${o.base?'<div class="meta">récord inicial</div>':o.pay?`<div class="ok" style="font-weight:700">${usd(o.pay)}</div>`:o.pre?'':'<div class="meta">sin pago</div>'}</td>`).join('')}</tr>`});
-  h+=`</tbody></table></div><p class="note">Cada lectura se guarda congelada al llegar el siguiente corte de Close Up, para que cambios posteriores de cartera no alteren lo ya pagado. Las lecturas de ${PREM_DESDE-1} son solo referencia y no pagan.</p></div>`;
+  h+=`</tbody></table></div><p class="note">Cada lectura se guarda congelada al llegar el siguiente corte de Close Up, para que cambios posteriores de cartera no alteren lo ya pagado. Las lecturas anteriores a ${PREM_BASE} son solo referencia y no pagan.</p></div>`;
   V.innerHTML=h;
 }
 
