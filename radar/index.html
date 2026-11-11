@@ -173,6 +173,7 @@ tr.vtot td{font-weight:700;background:var(--surface2);cursor:default}
     <button role="tab" id="tb-comp" aria-selected="false">Competidores</button>
     <button role="tab" id="tb-plan" aria-selected="false">Plan de visita <span id="nPlan" class="num"></span></button>
     <button role="tab" id="tb-vm" aria-selected="false">Productividad VM</button>
+    <button role="tab" id="tb-inv" aria-selected="false">Inversión vs. share</button>
     <button role="tab" id="tb-met" aria-selected="false">Cómo se calcula</button>
   </div>
 
@@ -180,6 +181,7 @@ tr.vtot td{font-weight:700;background:var(--surface2);cursor:default}
   <section id="v-comp" hidden></section>
   <section id="v-plan" hidden></section>
   <section id="v-vm" hidden></section>
+  <section id="v-inv" hidden></section>
   <section id="v-met" hidden></section>
 </div>
 <div id="dlg" class="dlg" hidden></div>
@@ -591,12 +593,34 @@ function msBar(a){
 }
 function renderVM(){
   ST.vmode=ST.vmode||store('rp_vmode')||'rank';
-  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto del equipo</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto y Plan 40%</button><button data-vmode="prem" aria-pressed="${ST.vmode==='prem'}">💰 Premio por crecimiento</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
   if(ST.vmode==='rank'){renderRank(sw);return}
   if(ST.vmode==='reto'){renderReto(sw);return}
+  if(ST.vmode==='prem'){renderPrem(sw);return}
   renderVMana(sw);
 }
 ST.vmeta=+(store('rp_vmeta')||5);
+const P40_UMBRAL=0.20, P40_META=0.40, P40_CONV=0.5; /* Plan 40%: share < 20% → meta 40%; supone ganar la mitad de las Rx de competencia de cada médico convertido */
+/* Premio: escala por puntos de crecimiento del share (TAM vs TAM anterior). Por debajo de +3 pts no paga: cae dentro del margen de error de Close Up. */
+const PREM=store('rp_prem')||{base:0,tiers:[[3,50],[5,100],[10,150],[15,200]]};
+function premOf(av){const p=av*100;let r=0;PREM.tiers.forEach(([m,pc])=>{if(p>=m)r=pc});return r}
+function renderPrem(sw){
+  const V=$('v-vm');
+  const all=[...new Set(D.docs.flatMap(d=>d.mr.map(m=>d.pais+'|'+m)))].map(k=>{const [p,vm]=k.split('|');
+    const a=aggDocs(D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)));return Object.assign(a,{vm,p,av:(a.ms26!=null&&a.ms25!=null)?a.ms26-a.ms25:0})}).filter(a=>a.ms26!=null).sort((x,y)=>y.av-x.av);
+  const money=v=>PREM.base>0?'US$ '+fmt(PREM.base*v/100):v+'% del bono';
+  let h=sw+`<div class="grid2"><div class="card"><h3>Tabla de puntos</h3><table style="min-width:0"><thead><tr><th>Si su share…</th><th class="r">Puntos de ranking</th><th class="r">Premio en efectivo</th></tr></thead><tbody>
+    <tr style="cursor:default"><td>Mantiene 1 punto de share</td><td class="r num">1</td><td class="r meta">no paga (es venta ya ganada)</td></tr>`;
+  [1,3,5,10,15,20].forEach(g=>{const pc=premOf(g/100);h+=`<tr style="cursor:default"><td>Crece <b>+${g}</b> pts en el año</td><td class="r num">${g*2}</td><td class="r num ${pc?'ok':''}">${pc?money(pc):'—'}</td></tr>`});
+  h+=`</tbody></table><p class="note">Ranking: cada punto de share vale 1 punto y cada punto de crecimiento vale 1 punto más (por eso crecer 5 pts suma 10). El premio en efectivo se paga <b>solo por crecimiento</b>.</p></div>
+  <div class="card"><h3>Escala del premio</h3><table style="min-width:0"><thead><tr><th>Crecimiento desde</th><th class="r">% del bono base</th></tr></thead><tbody>${PREM.tiers.map(([m,pc],i)=>`<tr style="cursor:default"><td>+<input type="number" data-pt="${i}" data-k="0" value="${m}" step="0.5" min="0"> pts</td><td class="r"><input type="number" data-pt="${i}" data-k="1" value="${pc}" min="0" step="10"> %</td></tr>`).join('')}</tbody></table>
+  <label class="meta" style="display:flex;gap:6px;align-items:center;margin-top:10px">Bono base por visitador (US$, 100%): <input type="number" id="premBase" value="${PREM.base||''}" placeholder="0" style="width:90px"></label>
+  <p class="note">Menos de +${PREM.tiers[0][0]} pts no paga: Close Up es una muestra y un movimiento tan chico puede ser ruido. Se mide TAM contra TAM del año anterior, así que se paga una vez al año (o al semestre con el corte de febrero).</p></div></div>
+  <div class="tw"><table style="min-width:640px"><thead><tr><th>Visitador</th><th class="r">Share 08/25 → 08/26</th><th class="r">Crecimiento</th><th class="r">Puntos ranking</th><th class="r">Premio con el corte actual</th></tr></thead><tbody>`;
+  all.forEach(a=>{const pc=premOf(a.av);h+=`<tr data-vmgo="${esc(a.vm)}"><td><span class="nm">${esc(a.vm)}</span><div class="meta">${esc(a.p)}</div></td><td class="r num">${pp(a.ms25)} → ${pp(a.ms26)}</td><td class="r num ${a.av>=0?'ok':'ko'}"><b>${a.av>=0?'+':''}${(a.av*100).toFixed(1)} pts</b></td><td class="r num">${(a.ms26*100+a.av*100).toFixed(0)}</td><td class="r num ${pc?'ok':''}"><b>${pc?money(pc):'—'}</b></td></tr>`});
+  h+=`</tbody></table></div><p class="note">Simulación con el corte TAM 08/26. La escala y el bono base se guardan solo en este navegador.</p>`;
+  V.innerHTML=h;
+}
 function renderRank(sw){
   const V=$('v-vm');
   ST.vw=+(ST.vw||store('rp_vw')||2);
@@ -635,21 +659,23 @@ function renderReto(sw){
   const rk=[...out].sort((x,y)=>y.av-x.av);
   const med=['🥇','🥈','🥉'];
   const goal=ST.vmeta/100;
-  let h=sw+`<p class="note" style="font-size:14px;max-width:none">Cada visitador compite <b>contra su propio número</b>, no contra los demás. La meta es subir <b>${ST.vmeta} puntos</b> su market share de recetas; la tarjeta dice cuántas recetas le faltan y a qué médicos ir por ellas. El orden y las medallas son por <b>avance del último año</b>, no por quién tiene más share.</p><div class="rgrid">`;
+  let h=sw+`<p class="note" style="font-size:14px;max-width:none">Quien tiene menos de 20% de share entra al <b>Plan de acción 40%</b>: su meta es llegar a 40% de las recetas que genera su panel. Los demás compiten <b>contra su propio número</b>, no contra los demás. La meta es subir <b>${ST.vmeta} puntos</b> su market share de recetas; la tarjeta dice cuántas recetas le faltan y a qué médicos ir por ellas. El orden y las medallas son por <b>avance del último año</b>, no por quién tiene más share.</p><div class="rgrid">`;
   rk.forEach((a,i)=>{
     if(a.ms26==null)return;
-    const meta=Math.min(1,a.ms26+goal), falta=Math.max(1,Math.ceil(meta*a.base-a.nb26));
+    const p40=a.ms26<P40_UMBRAL, meta=p40?P40_META:Math.min(1,a.ms26+goal), falta=Math.max(1,Math.ceil(meta*a.base-a.nb26));
     const mx=Math.max(meta,a.ms25||0)*1.15, sc=v=>(v/mx*100).toFixed(1);
-    const cand=a.L.filter(d=>['abierto','desarrollo','abandono','riesgo'].includes(d.tipo)&&d.c26>0).sort((x,y)=>y.c26-x.c26).slice(0,3);
+    let cand=a.L.filter(d=>['abierto','desarrollo','abandono','riesgo'].includes(d.tipo)&&d.c26>0).sort((x,y)=>y.c26-x.c26);
+    let nNeed=0; if(p40){let cum=0;for(const d of cand){cum+=d.c26*P40_CONV;nNeed++;if(cum>=falta)break} if(cand.reduce((s,d)=>s+d.c26*P40_CONV,0)<falta)nNeed=-1; cand=cand.slice(0,Math.max(3,Math.min(8,nNeed>0?nNeed:8)))} else cand=cand.slice(0,3);
     const pool=cand.reduce((s,d)=>s+d.c26,0);
-    h+=`<div class="rc"><h3><span>${esc(a.vm)}</span><span class="rk">${med[i]||''} #${i+1} en avance</span></h3>
-    <div class="rnums"><div><span>Hoy</span><b>${pp(a.ms26)}</b></div><div><span>Meta</span><b style="color:var(--accent-fg)">${pp(meta)}</b></div></div>
+    h+=`<div class="rc"><h3><span>${esc(a.vm)}</span><span class="rk">${med[i]||''} #${i+1} en avance</span></h3>${p40?`<div class="pill t-abandono" style="align-self:flex-start;font-size:12px">Plan de acción 40% · share bajo 20%</div>`:''}
+    <div class="rnums"><div><span>Hoy</span><b>${pp(a.ms26)}</b></div><div><span>${p40?'Meta Plan 40%':'Meta'}</span><b style="color:var(--accent-fg)">${pp(meta)}</b></div></div>
     <div><div class="rbar"><span class="f" style="width:${sc(a.ms26)}%"></span>${a.ms25!=null?`<span class="y" style="left:${sc(a.ms25)}%" title="hace un año"></span>`:''}<span class="m" style="left:${sc(meta)}%" title="meta"></span></div>
     <div class="meta" style="margin-top:4px">Hace un año: ${pp(a.ms25)} · avance <span class="${a.av>=0?'ok':'ko'}" style="font-weight:700">${a.av>=0?'+':''}${(a.av*100).toFixed(1)} pts</span></div></div>
     <div class="rgo">Le faltan <b>${falta}</b> recetas de Nutribén al año<div class="meta" style="color:inherit">de ${fmt(a.base)} recetas que se escriben en su cartera</div></div>
     <div><div class="meta" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Dónde ganarlas</div>
     ${cand.map(d=>`<div class="rdoc" data-open="${d.id}"><span><b>${esc(d.n)}</b><div class="meta">${d.best?'Desplazar '+esc(d.best.prod):esc(d.esp)} · <span class="pill t-${d.tipo}">${TNAME[d.tipo]}</span></div></span><span class="num" style="white-space:nowrap">${d.c26} Rx</span></div>`).join('')||'<div class="meta">Sin médicos abiertos en su cartera: el reto es defender.</div>'}
-    ${pool?`<div class="meta">Estos ${cand.length} médicos escriben ${pool} recetas de competencia: ganando ${pct(Math.min(1,falta/pool))} de ellas llega a la meta.</div>`:''}</div>
+    ${p40?(nNeed>0?`<div class="meta"><b style="color:var(--fg)">Necesita convertir ${nNeed} médicos</b>: ganando la mitad de las recetas de competencia de cada uno, en este orden, llega a 40%. Hito sugerido: ${pp((a.ms26+P40_META)/2)} al primer semestre.</div>`:`<div class="meta"><b style="color:var(--bad)">Con los médicos abiertos de su panel no alcanza 40%</b> aunque gane la mitad de sus recetas: necesita médicos nuevos o atacar a los leales a un competidor.</div>`)
+      :(pool?`<div class="meta">Estos ${cand.length} médicos escriben ${pool} recetas de competencia: ganando ${pct(Math.min(1,falta/pool))} de ellas llega a la meta.</div>`:'')}</div>
     <button class="btn ghost" data-vmgo="${esc(a.vm)}">Ver todos sus médicos →</button></div>`;
   });
   h+=`</div><p class="note">Market share = recetas de Nutribén ÷ todas las recetas de los segmentos donde Nutribén tiene producto (Close Up, TAM 08/26). "Le faltan" supone que cada receta ganada se le quita a la competencia. Equipo ${esc(ST.pais)}: ${pp(cart.ms25)} → ${pp(cart.ms26)}. Los números se actualizan cuando llega un nuevo corte de Close Up.</p>`;
@@ -705,6 +731,36 @@ function renderVMana(sw){
   V.innerHTML=h;
 }
 
+
+/* ---------- inversión vs. share ---------- */
+/* Solo conocemos la inversión de Nutribén: patrocinio 2024-26 (d.pat años, d.ext = internacional) y la Guía de Inversión EMC 2027 (d.emc). La inversión de la competencia no está en los datos. */
+const INVS=[['intl','✈ Patrocinio internacional Nutribén','Recibió patrocinio Nutribén 2024-26 y está en la categoría Extranjero de la Guía'],['loc','Patrocinio local Nutribén','Recibió patrocinio Nutribén 2024-26, no internacional'],['g27','En cartera, sin patrocinio','Lo visitamos y está en la Guía 2027, pero no ha recibido patrocinio'],['vis','En cartera, fuera de la Guía','Lo visitamos, sin patrocinio ni Guía'],['nada','Sin visita y sin inversión Nutribén','Nadie de Nutribén lo visita ni le invierte: compite en igualdad con nosotros salvo lo que invierta la competencia']];
+const invSeg=d=>d.pat>0&&d.ext?'intl':d.pat>0?'loc':d.emc?'g27':d.mr.length?'vis':'nada';
+function leader(a){const t=Object.assign({'Nutribén':a.nb26},a.labs);const e=Object.entries(t).sort((x,y)=>y[1]-x[1])[0]||['—',0];return [e[0],a.base?e[1]/a.base:0]}
+function renderInv(){
+  const V=$('v-inv');
+  const P=D.docs.filter(d=>d.pais===ST.pais);
+  if(!P.some(d=>d.mr.length)){V.innerHTML='<div class="empty">La inversión y la cartera solo están cruzadas para Honduras y El Salvador. Cambia de país arriba.</div>';return}
+  const G=INVS.map(([k,n,dsc])=>{const a=aggDocs(P.filter(d=>invSeg(d)===k));return Object.assign(a,{k,nm:n,dsc,ld:leader(a)})}).filter(a=>a.n>0);
+  const nada=G.find(a=>a.k==='nada'), intl=G.find(a=>a.k==='intl');
+  const mx=Math.max(...G.map(a=>Math.max(a.ms26||0,a.ld[1])))*1.1, sc=v=>(v/mx*100).toFixed(1);
+  let h=`<div class="act" style="font-size:15px;margin-top:12px">${nada?`En médicos <b>sin visita ni inversión de Nutribén</b> (${fmt(nada.act)} activos, ${fmt(nada.base)} Rx) Nutribén tiene <b>${pp(nada.ms26)}</b>; el líder es <b>${esc(nada.ld[0])}</b> con <b>${pp(nada.ld[1])}</b>.`:''} ${intl?`Donde hay patrocinio internacional, Nutribén tiene <b>${pp(intl.ms26)}</b>.`:''}</div>
+  <div class="tw"><table style="min-width:900px"><thead><tr><th>Segmento por inversión</th><th class="r">Médicos activos</th><th class="r">Rx captadas</th><th class="r">Rx Nutribén</th><th>Share Nutribén 08/25 → 08/26</th><th>Líder del segmento</th></tr></thead><tbody>`;
+  G.forEach(a=>{const lead=a.ld[0]==='Nutribén';
+    h+=`<tr style="cursor:default"><td><span class="nm">${esc(a.nm)}</span><div class="meta" style="max-width:340px">${esc(a.dsc)}</div></td><td class="r num">${fmt(a.act)}<div class="meta">de ${fmt(a.n)}</div></td><td class="r num">${fmt(a.base)}</td><td class="r num">${fmt(a.nb26)}</td>
+    <td style="min-width:220px"><span class="num">${pp(a.ms25)} → <b>${pp(a.ms26)}</b></span> ${dpp(a.ms25,a.ms26)}<div style="display:flex;height:10px;background:var(--surface2);border-radius:3px;margin-top:4px;position:relative"><i style="width:${sc(a.ms26||0)}%;background:var(--navy);border-radius:3px"></i><span style="position:absolute;top:-3px;bottom:-3px;width:3px;left:${sc(a.ld[1])}%;background:${LABC[a.ld[0]]||'var(--muted)'}" title="líder ${esc(a.ld[0])}"></span></div>${a.base<150?'<div class="warn">base chica: ±'+((a.ci||0)*100).toFixed(0)+' pp</div>':''}</td>
+    <td>${lead?'<span class="pill t-defender">Nutribén lidera</span>':`<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${LABC[a.ld[0]]};margin-right:5px"></i><b>${esc(a.ld[0])}</b> ${pp(a.ld[1])}<div class="meta">Nutribén a ${((a.ld[1]-(a.ms26||0))*100).toFixed(0)} pts</div>`}</td></tr>`});
+  h+=`</tbody></table></div><p class="note">La barra azul es el share de Nutribén; la marca de color es el share del líder del segmento. <b>Límite importante:</b> solo sabemos en qué médicos invierte Nutribén. "Sin inversión Nutribén" no significa que nadie le invierta: Abbott, Nestlé o Mead Johnson pueden estar patrocinándolo y eso no está en Close Up ni en la Guía. Patrocinio = años con patrocinio Nutribén 2024-26 (no se separa 2026 solo).</p>`;
+  /* línea base 2027 por categoría de la Guía */
+  const cats={};P.filter(d=>d.emc).forEach(d=>{const c=d.emc.split(' —')[0];(cats[c]=cats[c]||[]).push(d)});
+  const order=['Extranjero','Customizada+','Local+','Local'];
+  h+=`<div class="card" style="margin-top:12px"><h3>Línea base 2027: share actual de los médicos según la inversión planeada en la Guía EMC</h3><div style="overflow-x:auto"><table style="min-width:720px"><thead><tr><th>Inversión 2027 (Guía)</th><th class="r">Médicos</th><th class="r">Ya patrocinados 2024-26</th><th class="r">Rx captadas</th><th class="r">Share hoy (base 2027)</th><th>Líder</th></tr></thead><tbody>`;
+  Object.keys(cats).sort((x,y)=>(order.indexOf(x)+9)%13-(order.indexOf(y)+9)%13).forEach(c=>{const L=cats[c],a=aggDocs(L),ld=leader(a);
+    h+=`<tr style="cursor:default"><td><b>${esc(c)}</b></td><td class="r num">${fmt(a.n)}</td><td class="r num">${fmt(L.filter(d=>d.pat>0).length)}</td><td class="r num">${fmt(a.base)}</td><td class="r num"><b>${pp(a.ms26)}</b> <span class="meta">(08/25: ${pp(a.ms25)})</span></td><td>${ld[0]==='Nutribén'?'<span class="pill t-defender">Nutribén</span>':esc(ld[0])+' '+pp(ld[1])}</td></tr>`});
+  h+=`</tbody></table></div><p class="note">Este es el punto de partida para medir en 2027 si la inversión movió el share. Compara cada categoría con su propio número cuando llegue el TAM 08/27.</p></div>`;
+  V.innerHTML=h;
+}
+
 /* ---------- metodología ---------- */
 function renderMet(){
   const segs=Object.entries(SEGS).filter(([s])=>s!=='Nutribén');
@@ -728,9 +784,9 @@ function renderMet(){
 /* ---------- control ---------- */
 function render(){
   $('nDocs').textContent=fmt(D.docs.filter(d=>d.pais===ST.pais).length)+' de '+fmt(D.docs.length);
-  ['pres','comp','plan','vm','met'].forEach(t=>{$('v-'+t).hidden=ST.tab!==t;$('tb-'+t).setAttribute('aria-selected',ST.tab===t)});
+  ['pres','comp','plan','vm','inv','met'].forEach(t=>{$('v-'+t).hidden=ST.tab!==t;$('tb-'+t).setAttribute('aria-selected',ST.tab===t)});
   if(ST.tab==='pres')renderPres(); else kpis(filtered());
-  if(ST.tab==='comp')renderComp(); if(ST.tab==='plan')renderPlan(); if(ST.tab==='met')renderMet(); if(ST.tab==='vm')renderVM();
+  if(ST.tab==='comp')renderComp(); if(ST.tab==='plan')renderPlan(); if(ST.tab==='met')renderMet(); if(ST.tab==='vm')renderVM(); if(ST.tab==='inv')renderInv();
 }
 document.addEventListener('click',e=>{
   const t=e.target;
@@ -751,6 +807,8 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.dataset.pt!==undefined){const v=+t.value||0;PREM.tiers[+t.dataset.pt][+t.dataset.k]=v;PREM.tiers.sort((a,b)=>a[0]-b[0]);store('rp_prem',PREM);clearTimeout(window._pT);window._pT=setTimeout(renderVM,700);return}
+  if(t.id==='premBase'){PREM.base=+t.value||0;store('rp_prem',PREM);clearTimeout(window._pT);window._pT=setTimeout(()=>{renderVM();const i=$('premBase');if(i)i.focus()},700);return}
   if(t.id==='vmMeta'){const v=Math.max(1,Math.min(20,+t.value||5));ST.vmeta=v;store('rp_vmeta',v);clearTimeout(window._vmT);window._vmT=setTimeout(()=>{renderVM();const i=$('vmMeta');if(i){i.focus();i.setSelectionRange&&0}},500);return}
   if(t.dataset.o){PLAN[t.dataset.o].o=t.value;save();return}
   if(t.dataset.v){PLAN[t.dataset.v].v=+t.value||0;save();return}
