@@ -591,7 +591,7 @@ function msBar(a){
 }
 function renderVM(){
   ST.vmode=ST.vmode||store('rp_vmode')||'rank';
-  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking share de su panel</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto del equipo</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto del equipo</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
   if(ST.vmode==='rank'){renderRank(sw);return}
   if(ST.vmode==='reto'){renderReto(sw);return}
   renderVMana(sw);
@@ -599,28 +599,32 @@ function renderVM(){
 ST.vmeta=+(store('rp_vmeta')||5);
 function renderRank(sw){
   const V=$('v-vm');
+  ST.vw=+(ST.vw||store('rp_vw')||2);
   const all=[...new Set(D.docs.flatMap(d=>d.mr.map(m=>d.pais+'|'+m)))].map(k=>{const [p,vm]=k.split('|');
-    const a=aggDocs(D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)));return Object.assign(a,{vm,p,av:(a.ms26!=null&&a.ms25!=null)?a.ms26-a.ms25:null})})
-    .filter(a=>a.ms26!=null).sort((x,y)=>y.ms26-x.ms26);
-  const avr=[...all].sort((x,y)=>(y.av??-9)-(x.av??-9)).map(a=>a.vm);
-  const team=aggDocs(D.docs.filter(d=>d.mr.length));
-  const mx=Math.max(...all.map(a=>Math.max(a.ms26,a.ms25||0)))*1.1, sc=v=>(v/mx*100).toFixed(1);
+    const a=aggDocs(D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)));return Object.assign(a,{vm,p,av:(a.ms26!=null&&a.ms25!=null)?a.ms26-a.ms25:0})})
+    .filter(a=>a.ms26!=null);
+  const team=aggDocs(D.docs.filter(d=>d.mr.length)), tav=team.ms26-team.ms25;
+  /* Puntaje = share de hoy (pts) + peso × avance del año (pts). Si retrocede, el avance resta. */
+  all.forEach(a=>{a.pS=a.ms26*100;a.pA=ST.vw*a.av*100;a.score=a.pS+a.pA});
+  all.sort((x,y)=>y.score-x.score);
+  const mx=Math.max(...all.map(a=>a.pS+Math.max(0,a.pA)))*1.05, sc=v=>(Math.max(0,v)/mx*100).toFixed(1);
+  const quad=a=>{const hi=a.ms26>=team.ms26, up=a.av*100>=(ST.vmeta||5);return hi&&up?['Líder','t-defender']:hi?['Defiende su plaza','t-feudo']:up?['Retador','t-abierto']:['Alerta','t-abandono']};
   const med=['🥇','🥈','🥉'];
-  /* empate técnico: la diferencia con el vecino es menor que el margen de error combinado (95%) */
-  const tie=i=>{const a=all[i];for(const j of [i-1,i+1]){const b=all[j];if(b&&Math.abs(a.ms26-b.ms26)<Math.sqrt(a.ci**2+b.ci**2))return b.vm}return ''};
-  let h=sw+`<p class="note" style="font-size:14px;max-width:none">De cada <b>100 recetas</b> que Close Up capta en los médicos del panel de cada visitador, ¿cuántas son de Nutribén? Solo cuentan recetas de segmentos donde Nutribén tiene producto. Honduras y El Salvador juntos.</p>
+  let h=sw+`<div class="toolbar"><span class="meta" style="font-size:13px">Peso del avance:</span><div class="seg" role="group" aria-label="Peso del avance">${[1,2,3].map(w=>`<button data-vw="${w}" aria-pressed="${ST.vw===w}">${w}×</button>`).join('')}</div></div>
+  <p class="note" style="font-size:14px;max-width:none"><b>Puntaje = share de su panel hoy + ${ST.vw} × lo que avanzó en el año.</b> Premia las dos cosas: el share logrado (azul) y el avance (naranja). Si el share bajó, el avance resta. Share = de cada 100 recetas que Close Up capta en sus médicos, cuántas son Nutribén (solo segmentos donde Nutribén tiene producto).</p>
   <div class="card" style="margin-top:12px;padding:6px 18px">`;
   all.forEach((a,i)=>{
-    const n100=Math.round(a.ms26*100), ai=avr.indexOf(a.vm);
-    h+=`<div data-vmgo="${esc(a.vm)}" style="display:grid;grid-template-columns:44px minmax(150px,1.1fr) 3fr 150px;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Ver sus médicos">
+    const q=quad(a);
+    h+=`<div data-vmgo="${esc(a.vm)}" style="display:grid;grid-template-columns:44px minmax(160px,1.1fr) 90px 3fr 190px;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Ver sus médicos">
       <div style="font-family:var(--f-display);font-size:26px;font-weight:800;text-align:center">${med[i]||('#'+(i+1))}</div>
-      <div><div class="nm" style="font-size:16px">${esc(a.vm)}</div><div class="meta">${esc(a.p)} · ${fmt(a.nb26)} de ${fmt(a.base)} Rx captadas</div>${tie(i)?'<div class="warn">empate técnico con '+esc(tie(i))+'</div>':''}</div>
-      <div><div style="display:flex;align-items:baseline;gap:8px"><b style="font-family:var(--f-display);font-size:28px;font-variant-numeric:tabular-nums">${pp(a.ms26)}</b><span class="meta"><b style="color:var(--fg)">${n100}</b> de cada 100 recetas</span></div>
-        <div class="rbar" style="height:12px;margin-top:4px"><span class="f" style="width:${sc(a.ms26)}%"></span>${a.ms25!=null?`<span class="y" style="left:${sc(a.ms25)}%" title="hace un año"></span>`:''}<span class="m" style="left:${sc(team.ms26)}%;width:2px;background:var(--muted)" title="promedio del equipo"></span></div></div>
-      <div style="text-align:right"><div class="${a.av>=0?'ok':'ko'}" style="font-family:var(--f-display);font-size:20px;font-weight:800">${a.av==null?'—':(a.av>=0?'▲ +':'▼ ')+(a.av*100).toFixed(1)+' pts'}</div><div class="meta">vs. hace un año (${pp(a.ms25)}) · ${ai<3?med[ai]+' ':''}#${ai+1} en avance</div></div>
+      <div><div class="nm" style="font-size:16px">${esc(a.vm)}</div><div class="meta">${esc(a.p)} · ${fmt(a.nb26)} de ${fmt(a.base)} Rx captadas</div><span class="pill ${q[1]}" style="margin-top:3px">${q[0]}</span></div>
+      <div style="text-align:center"><b style="font-family:var(--f-display);font-size:30px;font-variant-numeric:tabular-nums">${a.score.toFixed(0)}</b><div class="meta">puntos</div></div>
+      <div><div style="display:flex;height:16px;border-radius:5px;overflow:hidden;background:var(--surface2)"><i style="width:${sc(a.pS)}%;background:var(--navy)"></i><i style="width:${sc(a.pA)}%;background:var(--accent)"></i></div>
+        <div class="meta" style="margin-top:4px">${a.pS.toFixed(1)} de share ${a.pA>=0?'+':'−'} ${Math.abs(a.pA).toFixed(1)} de avance</div></div>
+      <div style="text-align:right"><div><span class="meta">Share</span> <b class="num" style="font-size:16px">${pp(a.ms26)}</b></div><div class="${a.av>=0?'ok':'ko'}" style="font-weight:700">${a.av>=0?'▲ +':'▼ '}${(a.av*100).toFixed(1)} pts <span class="meta">vs. ${pp(a.ms25)}</span></div></div>
     </div>`;
   });
-  h+=`</div><p class="note">Barra azul = share de hoy (TAM 08/26) · marca oscura = hace un año (TAM 08/25) · línea gris = promedio del equipo (${pp(team.ms26)}). Empate técnico = la diferencia con el vecino es menor que el margen de error de Close Up, así que el orden entre ellos no es concluyente. Si un médico tiene dos visitadores, cuenta en el panel de ambos. Toca un visitador para ver sus médicos.</p>`;
+  h+=`</div><p class="note"><b>Líder</b>: share sobre el promedio del equipo y avance de al menos ${ST.vmeta||5} pts (la meta del Reto) · <b>Defiende su plaza</b>: share alto, avance menor a la meta · <b>Retador</b>: share bajo pero cumple la meta de avance · <b>Alerta</b>: no cumple ninguna de las dos. Equipo: share ${pp(team.ms26)}, avance ${tav>=0?'+':''}${(tav*100).toFixed(1)} pts. Close Up es una muestra: diferencias de menos de ~5 puntos entre dos visitadores no son concluyentes. Si un médico tiene dos visitadores, cuenta en el panel de ambos. Toca un visitador para ver sus médicos.</p>`;
   V.innerHTML=h;
 }
 function renderReto(sw){
@@ -737,6 +741,7 @@ document.addEventListener('click',e=>{
   const th=t.closest('th[data-s]'); if(th){const k=th.dataset.s;if(ST.sort===k)ST.dir*=-1;else{ST.sort=k;ST.dir=k==='n'||k==='cat'?1:-1}save();render();return}
   if(t.id==='more'){ST.lim+=60;render();return}
   const sg=t.closest('tr[data-seg]'); if(sg){$('fSeg').value=sg.dataset.seg;ST.tab='pres';render();return}
+  const vw=t.closest('[data-vw]'); if(vw){ST.vw=+vw.dataset.vw;store('rp_vw',ST.vw);renderVM();return}
   const vmo=t.closest('[data-vmode]'); if(vmo){ST.vmode=vmo.dataset.vmode;store('rp_vmode',ST.vmode);renderVM();return}
   const vg=t.closest('[data-vmgo]'); if(vg){const dp=D.docs.find(d=>d.mr.includes(vg.dataset.vmgo));if(dp&&dp.pais!==ST.pais){ST.pais=dp.pais;initFilters();save()}$('fMR').value=vg.dataset.vmgo;$('fCov').value='';ST.tab='pres';ST.lim=60;render();window.scrollTo({top:0,behavior:'smooth'});return}
   const vs=t.closest('th[data-vs]'); if(vs){const k=vs.dataset.vs;if(ST.vsort===k)ST.vdir*=-1;else{ST.vsort=k;ST.vdir=k==='vm'?1:-1}renderVM();return}
