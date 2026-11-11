@@ -593,7 +593,7 @@ function msBar(a){
 }
 function renderVM(){
   ST.vmode=ST.vmode||store('rp_vmode')||'rank';
-  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto y Plan 40%</button><button data-vmode="prem" aria-pressed="${ST.vmode==='prem'}">💰 Premio por crecimiento</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Reto y Plan 40%</button><button data-vmode="prem" aria-pressed="${ST.vmode==='prem'}">💰 Premio 2027</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
   if(ST.vmode==='rank'){renderRank(sw);return}
   if(ST.vmode==='reto'){renderReto(sw);return}
   if(ST.vmode==='prem'){renderPrem(sw);return}
@@ -601,26 +601,27 @@ function renderVM(){
 }
 ST.vmeta=+(store('rp_vmeta')||5);
 const P40_UMBRAL=0.20, P40_META=0.40, P40_CONV=0.5; /* Plan 40%: share < 20% → meta 40%; supone ganar la mitad de las Rx de competencia de cada médico convertido */
-/* Premio: escala por puntos de crecimiento del share (TAM vs TAM anterior). Por debajo de +3 pts no paga: cae dentro del margen de error de Close Up. */
-const PREM=store('rp_prem')||{base:0,tiers:[[3,50],[5,100],[10,150],[15,200]]};
-function premOf(av){const p=av*100;let r=0;PREM.tiers.forEach(([m,pc])=>{if(p>=m)r=pc});return r}
+/* Premio 2027: US$ 100 por cada punto de crecimiento del share de recetas del panel (TAM vs TAM del año anterior). Sin crecimiento no hay pago ni descuento. */
+const PREM_USD=100, PREM_DESDE=2027;
+const usd=v=>'US$ '+Math.round(v).toLocaleString('es-HN');
 function renderPrem(sw){
   const V=$('v-vm');
   const all=[...new Set(D.docs.flatMap(d=>d.mr.map(m=>d.pais+'|'+m)))].map(k=>{const [p,vm]=k.split('|');
     const a=aggDocs(D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)));return Object.assign(a,{vm,p,av:(a.ms26!=null&&a.ms25!=null)?a.ms26-a.ms25:0})}).filter(a=>a.ms26!=null).sort((x,y)=>y.av-x.av);
-  const money=v=>PREM.base>0?'US$ '+fmt(PREM.base*v/100):v+'% del bono';
-  let h=sw+`<div class="grid2"><div class="card"><h3>Tabla de puntos</h3><table style="min-width:0"><thead><tr><th>Si su share…</th><th class="r">Puntos de ranking</th><th class="r">Premio en efectivo</th></tr></thead><tbody>
-    <tr style="cursor:default"><td>Mantiene 1 punto de share</td><td class="r num">1</td><td class="r meta">no paga (es venta ya ganada)</td></tr>`;
-  [1,3,5,10,15,20].forEach(g=>{const pc=premOf(g/100);h+=`<tr style="cursor:default"><td>Crece <b>+${g}</b> pts en el año</td><td class="r num">${g*2}</td><td class="r num ${pc?'ok':''}">${pc?money(pc):'—'}</td></tr>`});
-  h+=`</tbody></table><p class="note">Ranking: cada punto de share vale 1 punto y cada punto de crecimiento vale 1 punto más (por eso crecer 5 pts suma 10). El premio en efectivo se paga <b>solo por crecimiento</b>.</p></div>
-  <div class="card"><h3>Escala del premio</h3><table style="min-width:0"><thead><tr><th>Crecimiento desde</th><th class="r">% del bono base</th></tr></thead><tbody>${PREM.tiers.map(([m,pc],i)=>`<tr style="cursor:default"><td>+<input type="number" data-pt="${i}" data-k="0" value="${m}" step="0.5" min="0"> pts</td><td class="r"><input type="number" data-pt="${i}" data-k="1" value="${pc}" min="0" step="10"> %</td></tr>`).join('')}</tbody></table>
-  <label class="meta" style="display:flex;gap:6px;align-items:center;margin-top:10px">Bono base por visitador (US$, 100%): <input type="number" id="premBase" value="${PREM.base||''}" placeholder="0" style="width:90px"></label>
-  <p class="note">Menos de +${PREM.tiers[0][0]} pts no paga: Close Up es una muestra y un movimiento tan chico puede ser ruido. Se mide TAM contra TAM del año anterior, así que se paga una vez al año (o al semestre con el corte de febrero).</p></div></div>
-  <div class="tw"><table style="min-width:640px"><thead><tr><th>Visitador</th><th class="r">Share 08/25 → 08/26</th><th class="r">Crecimiento</th><th class="r">Puntos ranking</th><th class="r">Premio con el corte actual</th></tr></thead><tbody>`;
-  all.forEach(a=>{const pc=premOf(a.av);h+=`<tr data-vmgo="${esc(a.vm)}"><td><span class="nm">${esc(a.vm)}</span><div class="meta">${esc(a.p)}</div></td><td class="r num">${pp(a.ms25)} → ${pp(a.ms26)}</td><td class="r num ${a.av>=0?'ok':'ko'}"><b>${a.av>=0?'+':''}${(a.av*100).toFixed(1)} pts</b></td><td class="r num">${(a.ms26*100+a.av*100).toFixed(0)}</td><td class="r num ${pc?'ok':''}"><b>${pc?money(pc):'—'}</b></td></tr>`});
-  h+=`</tbody></table></div><p class="note">Simulación con el corte TAM 08/26. La escala y el bono base se guardan solo en este navegador.</p>`;
+  const pay=av=>Math.max(0,Math.round(av*1000)/10)*PREM_USD;
+  let h=sw+`<div class="act" style="font-size:16px;margin-top:12px"><b>Premio por crecimiento ${PREM_DESDE}: ${usd(PREM_USD)} por cada punto</b> que suba el share de recetas de su panel contra el año anterior. Se mide con Close Up (TAM contra TAM). Si el share no sube, no hay premio; tampoco hay descuento.</div>
+  <div class="grid2"><div class="card"><h3>Tabla de pago</h3><table style="min-width:0"><thead><tr><th>Si su share crece…</th><th class="r">Premio</th></tr></thead><tbody>`;
+  [0,1,2,3,5,8,10,15,20,25,30].forEach(g=>{h+=`<tr style="cursor:default"><td>${g?'<b>+'+g+'</b> puntos':'0 o baja'}</td><td class="r num ${g?'ok':''}"><b>${g?usd(g*PREM_USD):'—'}</b></td></tr>`});
+  h+=`</tbody></table><p class="note">Se paga proporcional con un decimal: +5.6 puntos = ${usd(5.6*PREM_USD)}. Un punto = 1 receta de cada 100 que Close Up capta en sus médicos.</p></div>
+  <div class="card"><h3>Base de partida para ${PREM_DESDE}</h3><table style="min-width:0"><thead><tr><th>Visitador</th><th class="r">Share hoy (TAM 08/26)</th><th class="r">Para ganar ${usd(1000)}</th></tr></thead><tbody>`;
+  [...all].sort((x,y)=>y.ms26-x.ms26).forEach(a=>{const rx=Math.ceil((a.ms26+0.10)*a.base-a.nb26);h+=`<tr data-vmgo="${esc(a.vm)}"><td><span class="nm">${esc(a.vm)}</span><div class="meta">${esc(a.p)}${a.ms26<P40_UMBRAL?' · Plan 40%':''}</div></td><td class="r num"><b>${pp(a.ms26)}</b></td><td class="r num">llegar a ${pp(a.ms26+0.10)}<div class="meta">≈ ${rx} Rx Nutribén más al año</div></td></tr>`});
+  h+=`</tbody></table><p class="note">Cada uno compite contra su propio número de partida. ${usd(1000)} = +10 puntos.</p></div></div>
+  <div class="card" style="margin-top:12px"><h3>Simulación: cuánto cobraría cada uno si en ${PREM_DESDE} repite el crecimiento de este año</h3><div style="overflow-x:auto"><table style="min-width:640px"><thead><tr><th>Visitador</th><th class="r">Share 08/25 → 08/26</th><th class="r">Crecimiento</th><th class="r">Premio simulado</th></tr></thead><tbody>`;
+  let tot=0; all.forEach(a=>{const v=pay(a.av);tot+=v;h+=`<tr data-vmgo="${esc(a.vm)}"><td><span class="nm">${esc(a.vm)}</span><div class="meta">${esc(a.p)}</div></td><td class="r num">${pp(a.ms25)} → ${pp(a.ms26)}</td><td class="r num ${a.av>=0?'ok':'ko'}"><b>${a.av>=0?'+':''}${(a.av*100).toFixed(1)} pts</b>${Math.abs(a.av)<0.05?'<div class="warn">dentro del margen de error</div>':''}</td><td class="r num ${v?'ok':''}"><b>${v?usd(v):'—'}</b></td></tr>`});
+  h+=`<tr class="vtot"><td>Total</td><td></td><td></td><td class="r num">${usd(tot)}</td></tr></tbody></table></div><p class="note">Solo es referencia con el corte 08/25 → 08/26; el premio real empieza a contar en ${PREM_DESDE}. Close Up es una muestra: movimientos de menos de ~5 puntos pueden ser ruido.</p></div>`;
   V.innerHTML=h;
 }
+
 function renderRank(sw){
   const V=$('v-vm');
   ST.vw=+(ST.vw||store('rp_vw')||2);
@@ -819,8 +820,6 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target;
-  if(t.dataset.pt!==undefined){const v=+t.value||0;PREM.tiers[+t.dataset.pt][+t.dataset.k]=v;PREM.tiers.sort((a,b)=>a[0]-b[0]);store('rp_prem',PREM);clearTimeout(window._pT);window._pT=setTimeout(renderVM,700);return}
-  if(t.id==='premBase'){PREM.base=+t.value||0;store('rp_prem',PREM);clearTimeout(window._pT);window._pT=setTimeout(()=>{renderVM();const i=$('premBase');if(i)i.focus()},700);return}
   if(t.id==='vmMeta'){const v=Math.max(1,Math.min(20,+t.value||5));ST.vmeta=v;store('rp_vmeta',v);clearTimeout(window._vmT);window._vmT=setTimeout(()=>{renderVM();const i=$('vmMeta');if(i){i.focus();i.setSelectionRange&&0}},500);return}
   if(t.dataset.o){PLAN[t.dataset.o].o=t.value;save();return}
   if(t.dataset.v){PLAN[t.dataset.v].v=+t.value||0;save();return}
