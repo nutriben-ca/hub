@@ -286,7 +286,7 @@ function aplicaComp(){
     const nb=NBPAT?names.map(n=>NBPAT[n]).filter(Boolean):[];
     if(!d.iv0&&!rows.length&&!nb.length){d.iv=null;return}
     const iv={};['N','A','M','U','E'].forEach(l=>{const b=(d.iv0&&d.iv0[l])||[];iv[l]=[0,1,2,3].map(i=>b[i]?1:0)});
-    const ex={};rows.forEach(([l,a,v])=>{if(l&&a>=2024&&a<=2027){const k=l+a;ex[k]=Math.max(ex[k]||0,v)}}); /* varios registros del mismo laboratorio y año (divisiones): basta uno activo */
+    const ex={};d.c27=[];rows.forEach(([l,a,v,f])=>{if(l&&a>=2024&&a<=2027){const k=l+a;ex[k]=Math.max(ex[k]||0,v);if(a===2027&&v)d.c27.push([l,f||''])}}); /* varios registros del mismo laboratorio y año (divisiones): basta uno activo */
     Object.keys(ex).forEach(k=>{iv[k[0]][+k.slice(1)-2024]=ex[k]});
     nb.forEach(o=>Object.keys(o).forEach(a=>{iv.N[a-2024]=1}));
     d.iv=iv; d.pat=iv.N.slice(0,3).reduce((x,y)=>x+y,0);
@@ -300,8 +300,10 @@ function cargarPlanes(forzar){
   catch(e){if(!PLANES)PLAN_SRC='login';planesListos();return}
   SBP.auth.getSession().then(r=>{
     if(!r||!r.data||!r.data.session){if(PLAN_SRC!=='cache')PLAN_SRC='login';planesListos();return}
-    SBP.from('patrocinios_comp').select('medico_norm,pais,anio,lab,activo').limit(10000).then(c=>{if(c.error){console.warn('comp:',c.error);return}
-      const M={};(c.data||[]).forEach(r=>{const k=r.medico_norm+'|'+r.pais;(M[k]=M[k]||[]).push([COMPC[r.lab],r.anio,r.activo?1:0])});
+    const pedirComp=cols=>SBP.from('patrocinios_comp').select(cols).limit(10000);
+    pedirComp('medico_norm,pais,anio,lab,activo,origen,actualizado,detectado').then(c=>c.error?pedirComp('medico_norm,pais,anio,lab,activo,origen,actualizado'):c).then(c=>{if(c.error){console.warn('comp:',c.error);return}
+      /* fecha del hallazgo: la columna detectado si existe; si no, la última edición de lo capturado desde la app. La carga inicial del Maestro no tiene fecha. */
+      const M={};(c.data||[]).forEach(r=>{const k=r.medico_norm+'|'+r.pais;const f=r.detectado||(r.origen==='app'&&r.actualizado?String(r.actualizado).slice(0,10):'');(M[k]=M[k]||[]).push([COMPC[r.lab],r.anio,r.activo?1:0,f])});
       COMPL=M;COMP_SRC='live';store('nb_comp_radar',M);aplicaComp();if(window.__ready)render()});
     return SBP.from('planes').select('medico_key,mr,anio,objetivo,tacticas,inversion,actualizado').then(q=>{
       if(q.error){console.warn('planes:',q.error);if(PLAN_SRC!=='cache')PLAN_SRC=PLANES?'cache':'error';planesListos();return}
@@ -849,6 +851,7 @@ function renderVMana(sw){
 
 /* ---------- inversión vs. share ---------- */
 /* Fuente: Maestro V2 Patrocinios 24-25-26 (d.iv: patrocinio por laboratorio y año, 1/0). Solo médicos del Maestro que aparecen en Close Up. */
+function fechaComp27(){let m='';D.docs.forEach(d=>(d.c27||[]).forEach(([,f])=>{if(f>m)m=f}));return m?m.split('-').reverse().join('/'):''}
 const IVL=[['N','Nutribén'],['A','Abbott'],['M','Mead Johnson'],['U','Nutricia'],['E','Nestlé']];
 const INVS=[['nb','Solo Nutribén le invierte','Patrocinio de Nutribén y de ninguna otra casa'],['both','Nutribén y la competencia le invierten','Patrocinio de Nutribén y de al menos un competidor'],['comp','Solo la competencia le invierte','Patrocinio de algún competidor, no de Nutribén'],['nadie','Nadie le invierte','Está en el Maestro y ninguna casa lechera lo patrocina: compite en igualdad de condiciones'],['nd','Sin dato de inversión','No está en el Maestro (no lo visitamos o no se pudo cruzar): no sabemos quién le invierte']];
 const sp=(d,l)=>{const v=d.iv&&d.iv[l];if(!v)return false;return ST.ivy==='26'?v[2]>0:ST.ivy==='27'?v[3]>0:v.some(y=>y>0)};
@@ -862,6 +865,7 @@ function renderInv(){
   const nadie=G.find(a=>a.k==='nadie'), both=G.find(a=>a.k==='both');
   const mx=Math.max(...G.map(a=>Math.max(a.ms26||0,a.ld[1])))*1.1, sc=v=>(v/mx*100).toFixed(1);
   let h=`<div class="toolbar"><span class="meta" style="font-size:13px">Inversión de:</span><div class="seg" role="group"><button data-ivy="26" aria-pressed="${ST.ivy==='26'}">2026</button><button data-ivy="27" aria-pressed="${ST.ivy==='27'}">2027</button><button data-ivy="any" aria-pressed="${ST.ivy==='any'}">Cualquier año 2024-27</button></div><span class="meta">Fuente: ${COMP_SRC==='live'?'Plan de Acción en vivo (competencia y Nutribén) + Maestro V2':COMP_SRC==='cache'?'última copia del Plan de Acción en este equipo + Maestro V2':'Maestro V2 Patrocinios 24-25-26 (inicia sesión en el Plan de Acción para leerlo en vivo)'} · ${fmt(P.filter(d=>d.iv).length)} médicos del Maestro con recetas en Close Up</span></div>
+  ${ST.ivy==='27'?`<div class="note" style="margin-top:10px;padding:10px 12px;border-left:3px solid var(--navy);background:var(--surface2)"><b>2027 es un diario de hallazgos, no una lectura completa.</b> Solo aparecen los patrocinios que los visitadores han registrado${fechaComp27()?` (último registro: ${fechaComp27()})`:''}; los demás se conocen después del evento. “Nadie le invierte” en 2027 significa “nadie detectado a la fecha”. Para medir el territorio libre usa la cohorte fija 2026 que está abajo.</div>`:''}
   ${ST.ivy==='27'&&!P.some(d=>d.iv&&['N','A','M','U','E'].some(l=>d.iv[l][3]))?'<div class="empty" style="margin-top:12px">Todavía no hay patrocinios 2027 registrados en el Plan de Acción para este país. Hasta que se marquen, todos los médicos aparecen como “nadie le invierte” y la lectura de 2027 no es válida.</div>':''}
   <div class="act" style="font-size:15px;margin-top:12px">${nadie?`En médicos a los que <b>nadie les invierte</b> (${fmt(nadie.act)} activos, ${fmt(nadie.base)} Rx) Nutribén tiene <b>${pp(nadie.ms26)}</b>${nadie.ld[0]==='Nutribén'?' y <b>lidera</b>':`; el líder es <b>${esc(nadie.ld[0])}</b> con <b>${pp(nadie.ld[1])}</b>`}.`:''} ${both?`Donde Nutribén invierte (junto con la competencia) tiene <b>${pp(both.ms26)}</b>.`:''}</div>
   <div class="tw"><table style="min-width:900px"><thead><tr><th>¿Quién le invierte? (${ST.ivy==='26'?'2026':ST.ivy==='27'?'2027':'2024-27'})</th><th class="r">Médicos activos</th><th class="r">Rx captadas</th><th class="r">Rx Nutribén</th><th>Share Nutribén 08/25 → 08/26</th><th>Líder del segmento</th></tr></thead><tbody>`;
@@ -896,6 +900,18 @@ function renderInv(){
   Object.keys(cats).sort((x,y)=>(order.indexOf(x)+9)%13-(order.indexOf(y)+9)%13).forEach(c=>{const L=cats[c],a=aggDocs(L),ld=leader(a);
     h+=`<tr style="cursor:default"><td><b>${esc(c)}</b></td><td class="r num">${fmt(a.n)}</td><td class="r num">${fmt(L.filter(d=>d.pat>0).length)}</td><td class="r num">${fmt(a.base)}</td><td class="r num"><b>${pp(a.ms26)}</b> <span class="meta">(08/25: ${pp(a.ms25)})</span></td><td>${ld[0]==='Nutribén'?'<span class="pill t-defender">Nutribén</span>':esc(ld[0])+' '+pp(ld[1])}</td></tr>`});
   h+=`</tbody></table></div><p class="note">Este es el punto de partida para medir en 2027 si la inversión movió el share. Compara cada categoría con su propio número cuando llegue el TAM 08/27.</p></div>`;
+  /* cohorte fija del territorio libre: médicos sin patrocinio registrado en 2026; no entran ni salen durante 2027 */
+  const CO=P.filter(d=>d.mr.length&&libre26(d)), CS=CO.filter(d=>(d.c27||[]).length), CL=CO.filter(d=>!(d.c27||[]).length);
+  const aC=aggDocs(CO), aS=aggDocs(CS), aL=aggDocs(CL), nm27=l=>(IVL.find(x=>x[0]===l)||[l,l])[1];
+  const fd=f=>f?f.split('-').reverse().join('/'):'sin fecha';
+  h+=`<div class="card" style="margin-top:12px"><h3>Cohorte fija del territorio libre 2026: seguimiento en 2027</h3>
+  <p class="meta" style="margin:0 0 8px">Médicos con cartera asignada y sin patrocinio de ningún laboratorio en 2026. La lista no cambia durante 2027: si a un médico le descubren un patrocinio, se queda en la cohorte y se marca desde cuándo.</p>
+  <div class="tw"><table style="min-width:720px"><thead><tr><th>Grupo</th><th class="r">Médicos activos</th><th class="r">Rx captadas</th><th class="r">Share Nutribén</th></tr></thead><tbody>
+  <tr style="cursor:default"><td><b>Toda la cohorte</b></td><td class="r num">${fmt(aC.act)}<div class="meta">de ${fmt(aC.n)}</div></td><td class="r num">${fmt(aC.base)}</td><td class="r num"><b>${pp(aC.ms26)}</b></td></tr>
+  <tr style="cursor:default"><td>Siguen sin patrocinio detectado</td><td class="r num">${fmt(aL.act)}<div class="meta">de ${fmt(aL.n)}</div></td><td class="r num">${fmt(aL.base)}</td><td class="r num"><b>${pp(aL.ms26)}</b></td></tr>
+  <tr style="cursor:default"><td>Con patrocinio 2027 detectado</td><td class="r num">${fmt(aS.act)}<div class="meta">de ${fmt(aS.n)}</div></td><td class="r num">${fmt(aS.base)}</td><td class="r num"><b>${pp(aS.ms26)}</b></td></tr></tbody></table></div>
+  ${CS.length?`<div class="tw" style="margin-top:10px"><table style="min-width:720px"><thead><tr><th>Médico patrocinado en 2027</th><th>Visitador</th><th>Laboratorio</th><th>Detectado</th><th class="r">Rx</th><th class="r">Share Nutribén</th></tr></thead><tbody>${CS.map(d=>`<tr style="cursor:default"><td><span class="nm">${esc(d.n)}</span><div class="meta">${esc(d.loc||'')}</div></td><td>${esc(d.mr.join(', '))}</td><td>${d.c27.map(([l])=>esc(nm27(l))).join(', ')}</td><td>${[...new Set(d.c27.map(([,f])=>fd(f)))].join(', ')}</td><td class="r num">${fmt(d.c26+d.nb26)}</td><td class="r num"><b>${pp((d.c26+d.nb26)?d.nb26/(d.c26+d.nb26):null)}</b></td></tr>`).join('')}</tbody></table></div>`:'<p class="note">Todavía no hay médicos de la cohorte con patrocinio 2027 registrado.</p>'}
+  <p class="note">El share es el de Close Up ${esc(D.meta.corte||'')}. Cuando llegue la lectura TAM 12/26 se fija como punto de partida y cada lectura posterior muestra si el patrocinio le quitó recetas a Nutribén. Lo detectado siempre subestima: se registra lo que se ve en redes o lo que cuentan los médicos.</p></div>`;
   V.innerHTML=h;
 }
 
