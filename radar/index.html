@@ -273,6 +273,24 @@ function planesListos(){
   planSyncUI();
   if(typeof render==='function'&&window.__ready){render();const g=document.getElementById('dlg');if(g&&!g.hidden&&window.CURDOC)openDoc(window.CURDOC)}
 }
+/* Inversión en vivo desde Plan de Acción: patrocinios de la competencia (tabla patrocinios_comp) y de Nutribén (planes con patrocinio activo).
+   Un registro explícito de la tabla manda sobre la copia del Maestro incrustada; si no hay registro, queda la copia. Índices de d.iv: 0=2024 … 3=2027. */
+const COMPC={'Abbott':'A','Mead Johnson':'M','Nestlé':'E','Nutricia':'U'};
+let COMPL=store('nb_comp_radar')||null, COMP_SRC=COMPL?'cache':'', NBPAT=null;
+function aplicaComp(){
+  if(!COMPL&&!NBPAT)return;
+  D.docs.forEach(d=>{
+    if(d.iv0===undefined)d.iv0=d.iv?JSON.parse(JSON.stringify(d.iv)):null;
+    const names=[...new Set((d.pk||[]).map(k=>pnorm(String(k).split('||')[1]||'')).filter(Boolean))];
+    const rows=COMPL?names.flatMap(n=>COMPL[n+'|'+d.pais]||[]):[];
+    const nb=NBPAT?names.map(n=>NBPAT[n]).filter(Boolean):[];
+    if(!d.iv0&&!rows.length&&!nb.length){d.iv=null;return}
+    const iv={};['N','A','M','U','E'].forEach(l=>{const b=(d.iv0&&d.iv0[l])||[];iv[l]=[0,1,2,3].map(i=>b[i]?1:0)});
+    rows.forEach(([l,a,v])=>{if(l&&a>=2024&&a<=2027)iv[l][a-2024]=v});
+    nb.forEach(o=>Object.keys(o).forEach(a=>{iv.N[a-2024]=1}));
+    d.iv=iv; d.pat=iv.N.slice(0,3).reduce((x,y)=>x+y,0);
+  });
+}
 function cargarPlanes(forzar){
   if(!forzar){try{const c=JSON.parse(localStorage.getItem('nb_planes')||'null');if(c&&Object.keys(c).length){PLANES=c;PLAN_SRC='cache'}}catch(e){}}
   if(!window.supabase){if(!PLANES)PLAN_SRC='login';planesListos();return}
@@ -281,11 +299,15 @@ function cargarPlanes(forzar){
   catch(e){if(!PLANES)PLAN_SRC='login';planesListos();return}
   SBP.auth.getSession().then(r=>{
     if(!r||!r.data||!r.data.session){if(PLAN_SRC!=='cache')PLAN_SRC='login';planesListos();return}
-    return SBP.from('planes').select('medico_key,mr,objetivo,tacticas,inversion,actualizado').then(q=>{
+    SBP.from('patrocinios_comp').select('medico_norm,pais,anio,lab,activo').limit(10000).then(c=>{if(c.error){console.warn('comp:',c.error);return}
+      const M={};(c.data||[]).forEach(r=>{const k=r.medico_norm+'|'+r.pais;(M[k]=M[k]||[]).push([COMPC[r.lab],r.anio,r.activo?1:0])});
+      COMPL=M;COMP_SRC='live';store('nb_comp_radar',M);aplicaComp();if(window.__ready)render()});
+    return SBP.from('planes').select('medico_key,mr,anio,objetivo,tacticas,inversion,actualizado').then(q=>{
       if(q.error){console.warn('planes:',q.error);if(PLAN_SRC!=='cache')PLAN_SRC=PLANES?'cache':'error';planesListos();return}
       const P={};
       (q.data||[]).forEach(x=>{const o=x.tacticas||{};o.objetivo=x.objetivo||'';o._mr=x.mr||'';o._inv=pnum(x.inversion);o.fecha=x.actualizado?new Date(x.actualizado).toLocaleDateString('es-HN'):'';P[x.medico_key]=o});
-      PLANES=P;PLAN_SRC='live';PLAN_AT=new Date();planesListos();
+      const NB={};(q.data||[]).forEach(x=>{const a=+x.anio,t=x.tacticas&&x.tacticas.patrocinio;if(a>=2024&&a<=2027&&t&&t.activo){const n=pnorm(String(x.medico_key).split('||')[1]||'');(NB[n]=NB[n]||{})[a]=1}});
+      NBPAT=NB;PLANES=P;PLAN_SRC='live';PLAN_AT=new Date();aplicaComp();planesListos();
     });
   }).catch(e=>{console.warn(e);if(!PLANES)PLAN_SRC='error';planesListos()});
 }
@@ -828,7 +850,7 @@ function renderVMana(sw){
 /* Fuente: Maestro V2 Patrocinios 24-25-26 (d.iv: patrocinio por laboratorio y año, 1/0). Solo médicos del Maestro que aparecen en Close Up. */
 const IVL=[['N','Nutribén'],['A','Abbott'],['M','Mead Johnson'],['U','Nutricia'],['E','Nestlé']];
 const INVS=[['nb','Solo Nutribén le invierte','Patrocinio de Nutribén y de ninguna otra casa'],['both','Nutribén y la competencia le invierten','Patrocinio de Nutribén y de al menos un competidor'],['comp','Solo la competencia le invierte','Patrocinio de algún competidor, no de Nutribén'],['nadie','Nadie le invierte','Está en el Maestro y ninguna casa lechera lo patrocina: compite en igualdad de condiciones'],['nd','Sin dato de inversión','No está en el Maestro (no lo visitamos o no se pudo cruzar): no sabemos quién le invierte']];
-const sp=(d,l)=>{const v=d.iv&&d.iv[l];if(!v)return false;return ST.ivy==='26'?v[2]>0:v.some(y=>y>0)};
+const sp=(d,l)=>{const v=d.iv&&d.iv[l];if(!v)return false;return ST.ivy==='26'?v[2]>0:ST.ivy==='27'?v[3]>0:v.some(y=>y>0)};
 const invSeg=d=>{if(!d.iv)return 'nd';const nb=sp(d,'N'),c=['A','M','U','E'].some(l=>sp(d,l));return nb&&!c?'nb':nb?'both':c?'comp':'nadie'};
 function leader(a){const t=Object.assign({'Nutribén':a.nb26},a.labs);const e=Object.entries(t).sort((x,y)=>y[1]-x[1])[0]||['—',0];return [e[0],a.base?e[1]/a.base:0]}
 function renderInv(){
@@ -838,9 +860,10 @@ function renderInv(){
   const G=INVS.map(([k,n,dsc])=>{const a=aggDocs(P.filter(d=>invSeg(d)===k));return Object.assign(a,{k,nm:n,dsc,ld:leader(a)})}).filter(a=>a.n>0);
   const nadie=G.find(a=>a.k==='nadie'), both=G.find(a=>a.k==='both');
   const mx=Math.max(...G.map(a=>Math.max(a.ms26||0,a.ld[1])))*1.1, sc=v=>(v/mx*100).toFixed(1);
-  let h=`<div class="toolbar"><span class="meta" style="font-size:13px">Inversión de:</span><div class="seg" role="group"><button data-ivy="26" aria-pressed="${ST.ivy==='26'}">2026</button><button data-ivy="any" aria-pressed="${ST.ivy==='any'}">Cualquier año 2024-26</button></div><span class="meta">Fuente: Maestro V2 Patrocinios 24-25-26 · ${fmt(P.filter(d=>d.iv).length)} médicos del Maestro con recetas en Close Up</span></div>
+  let h=`<div class="toolbar"><span class="meta" style="font-size:13px">Inversión de:</span><div class="seg" role="group"><button data-ivy="26" aria-pressed="${ST.ivy==='26'}">2026</button><button data-ivy="27" aria-pressed="${ST.ivy==='27'}">2027</button><button data-ivy="any" aria-pressed="${ST.ivy==='any'}">Cualquier año 2024-27</button></div><span class="meta">Fuente: ${COMP_SRC==='live'?'Plan de Acción en vivo (competencia y Nutribén) + Maestro V2':COMP_SRC==='cache'?'última copia del Plan de Acción en este equipo + Maestro V2':'Maestro V2 Patrocinios 24-25-26 (inicia sesión en el Plan de Acción para leerlo en vivo)'} · ${fmt(P.filter(d=>d.iv).length)} médicos del Maestro con recetas en Close Up</span></div>
+  ${ST.ivy==='27'&&!P.some(d=>d.iv&&['N','A','M','U','E'].some(l=>d.iv[l][3]))?'<div class="empty" style="margin-top:12px">Todavía no hay patrocinios 2027 registrados en el Plan de Acción para este país. Hasta que se marquen, todos los médicos aparecen como “nadie le invierte” y la lectura de 2027 no es válida.</div>':''}
   <div class="act" style="font-size:15px;margin-top:12px">${nadie?`En médicos a los que <b>nadie les invierte</b> (${fmt(nadie.act)} activos, ${fmt(nadie.base)} Rx) Nutribén tiene <b>${pp(nadie.ms26)}</b>${nadie.ld[0]==='Nutribén'?' y <b>lidera</b>':`; el líder es <b>${esc(nadie.ld[0])}</b> con <b>${pp(nadie.ld[1])}</b>`}.`:''} ${both?`Donde Nutribén invierte (junto con la competencia) tiene <b>${pp(both.ms26)}</b>.`:''}</div>
-  <div class="tw"><table style="min-width:900px"><thead><tr><th>¿Quién le invierte? (${ST.ivy==='26'?'2026':'2024-26'})</th><th class="r">Médicos activos</th><th class="r">Rx captadas</th><th class="r">Rx Nutribén</th><th>Share Nutribén 08/25 → 08/26</th><th>Líder del segmento</th></tr></thead><tbody>`;
+  <div class="tw"><table style="min-width:900px"><thead><tr><th>¿Quién le invierte? (${ST.ivy==='26'?'2026':ST.ivy==='27'?'2027':'2024-27'})</th><th class="r">Médicos activos</th><th class="r">Rx captadas</th><th class="r">Rx Nutribén</th><th>Share Nutribén 08/25 → 08/26</th><th>Líder del segmento</th></tr></thead><tbody>`;
   G.forEach(a=>{const lead=a.ld[0]==='Nutribén';
     h+=`<tr style="cursor:default"><td><span class="nm">${esc(a.nm)}</span><div class="meta" style="max-width:340px">${esc(a.dsc)}</div></td><td class="r num">${fmt(a.act)}<div class="meta">de ${fmt(a.n)}</div></td><td class="r num">${fmt(a.base)}</td><td class="r num">${fmt(a.nb26)}</td>
     <td style="min-width:220px"><span class="num">${pp(a.ms25)} → <b>${pp(a.ms26)}</b></span> ${dpp(a.ms25,a.ms26)}<div style="display:flex;height:10px;background:var(--surface2);border-radius:3px;margin-top:4px;position:relative"><i style="width:${sc(a.ms26||0)}%;background:var(--navy);border-radius:3px"></i><span style="position:absolute;top:-3px;bottom:-3px;width:3px;left:${sc(a.ld[1])}%;background:${LABC[a.ld[0]]||'var(--muted)'}" title="líder ${esc(a.ld[0])}"></span></div>${a.base<150?'<div class="warn">base chica: ±'+((a.ci||0)*100).toFixed(0)+' pp</div>':''}</td>
@@ -851,7 +874,7 @@ function renderInv(){
     const S=aggDocs(L.filter(d=>sp(d,'N'))), N=aggDocs(L.filter(d=>!sp(d,'N'))), Z=aggDocs(L.filter(d=>invSeg(d)==='nadie')), T=aggDocs(L);
     return {vm,p,S,N,Z,dep:T.nb26?S.nb26/T.nb26:null}}).sort((a,b)=>(b.S.ms26||0)-(a.S.ms26||0));
   const cell=a=>a.n?`<td class="r num">${fmt(a.n)}<div class="meta">${fmt(a.base)} Rx</div></td><td class="r"><b class="num">${pp(a.ms26)}</b><div class="meta">08/25: ${pp(a.ms25)} ${a.ms25!=null&&a.ms26!=null?`<span class="${a.ms26>=a.ms25?'ok':'ko'}">${a.ms26>=a.ms25?'+':''}${((a.ms26-a.ms25)*100).toFixed(1)}</span>`:''}</div>${a.base&&a.base<60?'<div class="warn">base chica</div>':''}</td>`:'<td class="r meta">—</td><td class="r meta">—</td>';
-  h+=`<div class="card" style="margin-top:12px"><h3>Rendimiento por visitador: médicos patrocinados por Nutribén vs. no patrocinados (${ST.ivy==='26'?'patrocinio 2026':'patrocinio 2024-26'})</h3><div style="overflow-x:auto"><table style="min-width:980px"><thead>
+  h+=`<div class="card" style="margin-top:12px"><h3>Rendimiento por visitador: médicos patrocinados por Nutribén vs. no patrocinados (${ST.ivy==='26'?'patrocinio 2026':ST.ivy==='27'?'patrocinio 2027':'patrocinio 2024-27'})</h3><div style="overflow-x:auto"><table style="min-width:980px"><thead>
     <tr><th rowspan="2">Visitador</th><th colspan="2" style="text-align:center;border-bottom:2px solid var(--navy)">Patrocinados por Nutribén</th><th colspan="2" style="text-align:center;border-bottom:2px solid var(--muted)">No patrocinados</th><th class="r" rowspan="2">Diferencia de share</th><th colspan="2" style="text-align:center;border-bottom:2px solid var(--accent)">De los no patrocinados: nadie les invierte</th><th class="r" rowspan="2">Sus Rx Nutribén que vienen de patrocinados</th></tr>
     <tr><th class="r">Médicos</th><th class="r">Share NB</th><th class="r">Médicos</th><th class="r">Share NB</th><th class="r">Médicos</th><th class="r">Share NB</th></tr></thead><tbody>`;
   reps.forEach(r=>{const g=(r.S.ms26!=null&&r.N.ms26!=null)?r.S.ms26-r.N.ms26:null;
@@ -936,6 +959,6 @@ window.__ready=0;
 $('nPlan').textContent=Object.keys(PLAN).length?'('+Object.keys(PLAN).length+')':'';
 render();
 window.__ready=1;
-planSyncUI();cargarPlanes();
+aplicaComp();planSyncUI();cargarPlanes();
 </script>
 </html>
