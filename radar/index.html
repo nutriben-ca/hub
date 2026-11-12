@@ -602,10 +602,11 @@ function msBar(a){
 }
 function renderVM(){
   ST.vmode=ST.vmode||store('rp_vmode')||'rank';
-  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Plan 40-40</button><button data-vmode="prem" aria-pressed="${ST.vmode==='prem'}">💰 Premio bimestral 2027</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
+  const sw=`<div class="toolbar"><div class="seg" role="group" aria-label="Vista"><button data-vmode="rank" aria-pressed="${ST.vmode==='rank'}">🏆 Ranking</button><button data-vmode="reto" aria-pressed="${ST.vmode==='reto'}">🎯 Plan 40-40</button><button data-vmode="prem" aria-pressed="${ST.vmode==='prem'}">💰 Premio bimestral 2027</button><button data-vmode="liga" aria-pressed="${ST.vmode==='liga'}">🌱 Liga territorio libre</button><button data-vmode="ana" aria-pressed="${ST.vmode==='ana'}">📊 Análisis detallado</button></div>${ST.vmode==='reto'?`<label class="meta" style="display:flex;align-items:center;gap:6px">Meta: subir <input type="number" id="vmMeta" min="1" max="20" value="${ST.vmeta}"> puntos de market share</label>`:''}</div>`;
   if(ST.vmode==='rank'){renderRank(sw);return}
   if(ST.vmode==='reto'){renderReto(sw);return}
   if(ST.vmode==='prem'){renderPrem(sw);return}
+  if(ST.vmode==='liga'){renderLiga(sw);return}
   renderVMana(sw);
 }
 ST.vmeta=+(store('rp_vmeta')||5);
@@ -674,6 +675,39 @@ function renderPrem(sw){
 }
 
 
+/* Liga del territorio libre (solo referencia, no paga): share de cada visitador en los médicos de su cartera a los que ningún laboratorio patrocinó en 2026 (Maestro) */
+const libre26=d=>d.iv&&!['N','A','M','U','E'].some(l=>d.iv[l]&&d.iv[l][2]>0);
+function renderLiga(sw){
+  const V=$('v-vm');
+  const all=[...new Set(D.docs.flatMap(d=>d.mr.map(m=>d.pais+'|'+m)))].map(k=>{const [p,vm]=k.split('|');
+    const L=D.docs.filter(d=>d.pais===p&&d.mr.includes(vm)&&libre26(d)), a=aggDocs(L);
+    const esc1=L.filter(d=>d.nb26>0&&d.nb25===0).length, perd=L.filter(d=>d.nb25>0&&d.nb26===0).length;
+    const pl=PLANES?L.filter(d=>d.c26+d.nb26>0&&plansOf(d).length).length:null;
+    return Object.assign(a,{vm,p,L,ld:leader(a),av:(a.ms26!=null&&a.ms25!=null)?a.ms26-a.ms25:null,esc1,perd,pl})}).filter(a=>a.n>0)
+    .sort((x,y)=>(y.ms26??-1)-(x.ms26??-1));
+  const tot=aggDocs(D.docs.filter(d=>d.mr.length&&libre26(d)));
+  const mx=Math.max(0.05,...all.map(a=>Math.max(a.ms26||0,a.ms25||0,a.ld[1])))*1.1, sc=v=>(v/mx*100).toFixed(1);
+  const med=['🥇','🥈','🥉'];
+  let h=sw+`<div class="act" style="font-size:15px;margin-top:12px"><b>Liga del territorio libre · solo referencia, no paga premio.</b> Mide a cada visitador únicamente en los médicos de su cartera a los que <b>ningún laboratorio patrocinó en 2026</b>: ahí se compite en igualdad de condiciones y el resultado es mérito de la visita. Equipo: <b>${pp(tot.ms26)}</b> de share en ${fmt(tot.act)} médicos activos y ${fmt(tot.base)} recetas (hace un año ${pp(tot.ms25)}).</div>
+  <div class="card" style="margin-top:12px;padding:6px 18px">`;
+  all.forEach((a,i)=>{
+    const top=a.top1&&a.top1.nb26>0?a.top1:null;
+    h+=`<div data-liga="${esc(a.vm)}" style="display:grid;grid-template-columns:44px minmax(170px,1.2fr) 3fr 210px;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Ver sus médicos libres">
+      <div style="font-family:var(--f-display);font-size:26px;font-weight:800;text-align:center">${a.nb26>0?(med[i]||'#'+(i+1)):'#'+(i+1)}</div>
+      <div><div class="nm" style="font-size:16px">${esc(a.vm)}</div><div class="meta">${esc(a.p)} · ${fmt(a.act)} médicos libres activos · ${fmt(a.base)} Rx</div>${a.base<60?'<div class="warn">base chica: no concluyente</div>':''}${a.pl!=null?`<div class="meta">${a.pl} de ${a.act} ya tienen acción en el Plan de Acción</div>`:''}</div>
+      <div><div style="display:flex;align-items:baseline;gap:8px"><b style="font-family:var(--f-display);font-size:28px;font-variant-numeric:tabular-nums">${pp(a.ms26)}</b><span class="meta">${fmt(a.nb26)} Rx Nutribén · recetan <b style="color:var(--fg)">${a.nbDocs} de ${a.act}</b> médicos</span></div>
+        <div class="rbar" style="height:12px;margin-top:4px"><span class="f" style="width:${sc(a.ms26||0)}%"></span>${a.ms25!=null?`<span class="y" style="left:${sc(a.ms25)}%" title="hace un año"></span>`:''}<span class="m" style="left:${sc(a.ld[1])}%;background:${LABC[a.ld[0]]||'var(--muted)'}" title="líder: ${esc(a.ld[0])}"></span></div>
+        <div class="meta" style="margin-top:4px">${a.ld[0]==='Nutribén'?'<b class="ok">Nutribén lidera este segmento</b>':`Líder: <b style="color:var(--fg)">${esc(a.ld[0])}</b> ${pp(a.ld[1])}`}${top&&a.top1f>0.4?` · <span class="warn">${esc(top.n)} aporta ${pct(a.top1f)} de estas Rx Nutribén</span>`:''}</div></div>
+      <div style="text-align:right"><div class="${a.av==null?'fl':a.av>0?'ok':a.av<0?'ko':'fl'}" style="font-family:var(--f-display);font-size:20px;font-weight:800">${a.av==null?'—':(a.av>0?'▲ +':a.av<0?'▼ ':'= ')+(a.av*100).toFixed(1)+' pts'}</div><div class="meta">vs. hace un año (${pp(a.ms25)})</div><div class="meta"><span class="ok">+${a.esc1}</span> médicos empezaron a recetar · <span class="ko">−${a.perd}</span> dejaron</div></div>
+    </div>`;
+    if(ST.liga===a.vm){
+      const docs=a.L.filter(d=>d.c26+d.nb26>0).sort((x,y)=>(y.c26+y.nb26)-(x.c26+x.nb26)).slice(0,25);
+      h+=`<div style="padding:8px 0 14px 58px;border-bottom:1px solid var(--line)"><div style="overflow-x:auto"><table style="min-width:640px"><thead><tr><th>Médico libre</th><th class="r">Rx totales</th><th class="r">Rx Nutribén 08/25 → 08/26</th><th class="r">Share NB</th><th>Qué desplazar</th>${PLANES?'<th>Plan de Acción</th>':''}</tr></thead><tbody>${docs.map(d=>`<tr data-id="${d.id}"><td><span class="nm">${esc(d.n)}</span><div class="meta">${esc(d.loc)} · ${esc(d.esp)}</div></td><td class="r num">${d.c26+d.nb26}</td><td class="r num">${d.nb25} → <b class="${d.nb26>d.nb25?'ok':d.nb26<d.nb25?'ko':''}">${d.nb26}</b></td><td class="r num">${pct(d.sh26)}</td><td class="meta">${d.best?esc(d.best.prod):'—'}</td>${PLANES?`<td class="meta">${plansOf(d).length?'✓ con acción':'sin acción'}</td>`:''}</tr>`).join('')}</tbody></table></div><div class="meta" style="margin-top:6px">Los ${docs.length} médicos libres con más recetas de ${fmt(a.act)} activos. Toca un médico para ver su ficha.</div></div>`;
+    }
+  });
+  h+=`</div><p class="note">Médico libre = está en el Maestro de patrocinios y ningún laboratorio (Nutribén, Abbott, Mead Johnson, Nutricia, Nestlé) lo patrocinó en 2026. Share sin tope por médico. Barra azul = share de hoy · marca oscura = hace un año · marca de color = share del líder del segmento. La columna del Plan de Acción es solo informativa y se lee de lo que ya está registrado allá; no hay que capturar nada aquí. Con menos de 60 recetas la lectura no es concluyente. Toca un visitador para ver sus médicos libres.</p>`;
+  V.innerHTML=h;
+}
 function renderRank(sw){
   const V=$('v-vm');
   ST.vw=+(ST.vw||store('rp_vw')||2);
@@ -879,6 +913,7 @@ document.addEventListener('click',e=>{
   const sg=t.closest('tr[data-seg]'); if(sg){$('fSeg').value=sg.dataset.seg;ST.tab='pres';render();return}
   const iy=t.closest('[data-ivy]'); if(iy){ST.ivy=iy.dataset.ivy;renderInv();return}
   const vw=t.closest('[data-vw]'); if(vw){ST.vw=+vw.dataset.vw;store('rp_vw',ST.vw);renderVM();return}
+  const lg=t.closest('[data-liga]'); if(lg&&!t.closest('tr[data-id]')){ST.liga=ST.liga===lg.dataset.liga?'':lg.dataset.liga;renderVM();return}
   const vmo=t.closest('[data-vmode]'); if(vmo){ST.vmode=vmo.dataset.vmode;store('rp_vmode',ST.vmode);renderVM();return}
   const vg=t.closest('[data-vmgo]'); if(vg){const dp=D.docs.find(d=>d.mr.includes(vg.dataset.vmgo));if(dp&&dp.pais!==ST.pais){ST.pais=dp.pais;initFilters();save()}$('fMR').value=vg.dataset.vmgo;$('fCov').value='';ST.tab='pres';ST.lim=60;render();window.scrollTo({top:0,behavior:'smooth'});return}
   const vs=t.closest('th[data-vs]'); if(vs){const k=vs.dataset.vs;if(ST.vsort===k)ST.vdir*=-1;else{ST.vsort=k;ST.vdir=k==='vm'?1:-1}renderVM();return}
