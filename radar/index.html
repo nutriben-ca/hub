@@ -275,7 +275,7 @@ function planesListos(){
 }
 /* Inversión en vivo desde Plan de Acción: patrocinios de la competencia (tabla patrocinios_comp) y de Nutribén (planes con patrocinio activo).
    Un registro explícito de la tabla manda sobre la copia del Maestro incrustada; si no hay registro, queda la copia. Índices de d.iv: 0=2024 … 3=2027. */
-const COMPC={'Abbott':'A','Mead Johnson':'M','Nestlé':'E','Nutricia':'U'};
+const COMPC={'Abbott':'A','Mead Johnson':'M','Nestlé':'E','Nutricia':'U','Nutricia Nutrilon':'U','Nutricia Bebelac':'U'}; /* las dos divisiones de Nutricia en El Salvador cuentan como Nutricia */
 let COMPL=store('nb_comp_radar')||null, COMP_SRC=COMPL?'cache':'', NBPAT=null;
 function aplicaComp(){
   if(!COMPL&&!NBPAT)return;
@@ -286,7 +286,8 @@ function aplicaComp(){
     const nb=NBPAT?names.map(n=>NBPAT[n]).filter(Boolean):[];
     if(!d.iv0&&!rows.length&&!nb.length){d.iv=null;return}
     const iv={};['N','A','M','U','E'].forEach(l=>{const b=(d.iv0&&d.iv0[l])||[];iv[l]=[0,1,2,3].map(i=>b[i]?1:0)});
-    rows.forEach(([l,a,v])=>{if(l&&a>=2024&&a<=2027)iv[l][a-2024]=v});
+    const ex={};rows.forEach(([l,a,v])=>{if(l&&a>=2024&&a<=2027){const k=l+a;ex[k]=Math.max(ex[k]||0,v)}}); /* varios registros del mismo laboratorio y año (divisiones): basta uno activo */
+    Object.keys(ex).forEach(k=>{iv[k[0]][+k.slice(1)-2024]=ex[k]});
     nb.forEach(o=>Object.keys(o).forEach(a=>{iv.N[a-2024]=1}));
     d.iv=iv; d.pat=iv.N.slice(0,3).reduce((x,y)=>x+y,0);
   });
