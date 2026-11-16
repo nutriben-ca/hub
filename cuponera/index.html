@@ -198,6 +198,7 @@ function pintar(recienRegistrada) {
     <button class="btn light block" id="bRef" type="button">Actualizar</button>`;
   app.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { estado.tab = b.dataset.t; pintar(); });
   app.querySelectorAll('[data-canjear]').forEach(b => b.onclick = () => mostrarCodigo(b.dataset.canjear));
+  app.querySelectorAll('[data-donde]').forEach(b => b.onclick = () => dondeComprar(b.dataset.donde));
   $('#bRef').onclick = () => cargarCupones();
 }
 
@@ -213,7 +214,8 @@ function tarjetaCupon(c) {
       <div style="margin:6px 0">${chip}${usos}</div>
       ${c.descripcion ? `<div class="small">${C.esc(c.descripcion)}</div>` : ''}${idn}
       ${c.terminos ? `<details class="tyc"><summary>Términos y condiciones</summary><p>${C.esc(c.terminos)}</p></details>` : ''}
-      ${c.estado === 'disponible' ? `<button class="btn orange block" style="margin-top:10px" data-canjear="${C.esc(c.codigo)}">Canjear</button>` : ''}
+      ${c.estado === 'disponible' ? `<button class="btn orange block" style="margin-top:10px" data-canjear="${C.esc(c.codigo)}">Canjear</button>
+        <button class="btn light block" style="margin-top:8px" data-donde="${C.esc(c.codigo)}">Dónde comprar</button>` : ''}
     </div></div>`;
 }
 
@@ -229,6 +231,38 @@ function mostrarCodigo(codigo) {
   $('#modal').classList.remove('hidden');
   try { new QRCode($('#qrBox'), { text: codigo, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
   $('#bCerrar').onclick = () => { $('#modal').classList.add('hidden'); cargarCupones(); };
+}
+
+async function dondeComprar(codigo, ciudad) {
+  const K = 'cup_ciudad';
+  $('#modalBox').innerHTML = '<span class="spinner"></span> Buscando farmacias…';
+  $('#modal').classList.remove('hidden');
+  let d;
+  try { d = await rpc('cup_donde_comprar', { p_token: C.ls.get(TK), p_codigo: codigo, p_ciudad: ciudad || C.ls.get(K) || null }); }
+  catch (err) { $('#modalBox').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div><button class="btn block" id="bCerrar">Cerrar</button>`; $('#bCerrar').onclick = () => $('#modal').classList.add('hidden'); return; }
+  const est = { disponible: '<span class="chip ok">Disponible</span>', pocas: '<span class="chip warn">Pocas unidades</span>', agotado: '<span class="chip bad">Agotado</span>' };
+  $('#modalBox').innerHTML = `
+    <h2>Dónde comprar</h2>
+    ${d.producto ? `<p class="small muted" style="margin:0">${C.esc(d.producto)}</p>` : ''}
+    <label for="selCiu">Tu ciudad</label>
+    <select id="selCiu"><option value="">Selecciona…</option>${d.ciudades.map(c => `<option ${c === d.ciudad ? 'selected' : ''}>${C.esc(c)}</option>`).join('')}</select>
+    <div id="lisSuc" style="margin-top:12px;max-height:50vh;overflow:auto">${!d.ciudad ? '<p class="muted small">Elige tu ciudad para ver las farmacias participantes.</p>' :
+      d.sucursales.length ? d.sucursales.map(s => `<div style="border-bottom:1px solid var(--line);padding:10px 0">
+        <b>${C.esc(s.cadena === 'Otro' ? s.nombre : s.cadena)}</b> ${s.estado ? est[s.estado] : ''}
+        <div class="small">${C.esc(s.cadena === 'Otro' ? '' : s.nombre)}</div>
+        <div class="small muted">${C.esc(s.direccion || '')}</div>
+        ${s.actualizado ? `<div class="small muted">Actualizado: ${C.fechaHora(s.actualizado)}</div>` : ''}
+        <button class="btn sm ghost" style="margin-top:6px" data-nohay="${s.id}">No la encontré aquí</button></div>`).join('')
+      : '<p class="muted small">Aún no hay farmacias participantes en esta ciudad. Escríbenos por WhatsApp y te ayudamos.</p>'}</div>
+    <p class="small muted">La disponibilidad es una referencia y puede cambiar durante el día.</p>
+    <button class="btn block" id="bCerrar">Cerrar</button>`;
+  $('#bCerrar').onclick = () => $('#modal').classList.add('hidden');
+  $('#selCiu').onchange = e => { C.ls.set(K, e.target.value); dondeComprar(codigo, e.target.value); };
+  $('#modalBox').querySelectorAll('[data-nohay]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await rpc('cup_reportar_desabasto', { p_token: C.ls.get(TK), p_codigo: codigo, p_sucursal: b.dataset.nohay }); b.outerHTML = '<div class="alert ok small" style="margin:6px 0 0">Gracias por avisarnos. Lo revisaremos con la farmacia.</div>'; }
+    catch (err) { b.outerHTML = `<div class="alert bad small" style="margin:6px 0 0">${C.esc(C.msg(err))}</div>`; }
+  });
 }
 
 $('#btnSalir').onclick = () => {

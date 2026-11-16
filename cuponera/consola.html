@@ -106,11 +106,11 @@ function shell() {
   const tabs = [['emitir', 'Emitir cupón'], ['tarjetas', 'Tarjetas QR'], ['cupones', 'Cupones emitidos'], ['campanas', 'Campañas']];
   if (YO.gerencia) tabs.unshift(['resumen', 'Resumen']);
   if (YO.gerencia || YO.rol === 'controller') tabs.push(['canjes', 'Canjes y reembolsos']);
-  tabs.push(['sucursales', 'Farmacias y PIN' + (PEND ? ' (' + PEND + ')' : '')]);
+  tabs.push(['inventario', 'Inventario y desabasto'], ['sucursales', 'Farmacias y PIN' + (PEND ? ' (' + PEND + ')' : '')]);
   if (YO.admin) tabs.splice(tabs.length - 1, 0, ['plantillas', 'Plantillas']);
   app.innerHTML = `<div class="ntabs">${tabs.map(t => `<button data-t="${t[0]}" class="${tab === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div><div id="cont"></div>`;
   app.querySelectorAll('.ntabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; shell(); });
-  ({ resumen, emitir, tarjetas, cupones, campanas, canjes, plantillas, sucursales })[tab]();
+  ({ resumen, emitir, tarjetas, cupones, campanas, canjes, plantillas, sucursales, inventario })[tab]();
 }
 
 // ---------- Selector de médico (panel del VM) ----------
@@ -538,6 +538,65 @@ async function sucursales() {
       if (error) return $('#nE').innerHTML = err(error.code === '23505' ? { message: 'Ese código ya existe.' } : error);
       cerrarModal(); sucursales();
     };
+  };
+}
+
+// ---------- Inventario y desabasto ----------
+async function inventario() {
+  const cont = $('#cont'); cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
+  let des = [], inv = [], sucs = [], prods = [];
+  try {
+    des = await rpc('cup_desabastos');
+    const r = await Promise.all([sb.from('cup_inventario').select('sucursal_id,producto_id,cantidad,actualizado_at,fuente'),
+      sb.from('cup_sucursales').select('id,cadena,nombre,ciudad,codigo').eq('activa', true), sb.from('cup_productos').select('id,nombre').order('nombre')]);
+    inv = r[0].data || []; sucs = r[1].data || []; prods = r[2].data || [];
+  } catch (e) { cont.innerHTML = err(e); return; }
+  const sN = Object.fromEntries(sucs.map(s => [s.id, s])), pN = Object.fromEntries(prods.map(p => [p.id, p.nombre]));
+  const pend = des.filter(d => d.pendiente);
+  const ceros = inv.filter(i => i.cantidad === 0 && sN[i.sucursal_id]);
+  const ult = inv.reduce((m, i) => i.actualizado_at > m ? i.actualizado_at : m, '');
+  cont.innerHTML = `
+    <div class="card" ${pend.length ? 'style="border-color:var(--orange)"' : ''}><h2>Madres que no encontraron el producto (${pend.length} pendientes)</h2>
+      <div class="tscroll"><table><tr><th>Fecha</th><th>Farmacia</th><th>Ciudad</th><th>Producto</th><th>Estado</th><th></th></tr>
+      ${des.map(d => `<tr><td>${C.fechaHora(d.fecha)}</td><td>${C.esc(d.cadena)} · ${C.esc(d.sucursal)}</td><td>${C.esc(d.ciudad || '')}</td><td>${C.esc(d.producto || '—')}</td>
+        <td>${d.pendiente ? '<span class="chip warn">Pendiente</span>' : `<span class="chip ok">Atendido</span><div class="small muted">${C.esc(d.atendio || '')}${d.nota ? ' · ' + C.esc(d.nota) : ''}</div>`}</td>
+        <td>${d.pendiente ? `<button class="btn sm ghost" data-at="${d.id}">Marcar atendido</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin reportes.</td></tr>'}
+      </table></div></div>
+    <div class="grid2">
+      <div class="card"><h2>Inventario cargado</h2>
+        <p class="small">${inv.length ? `${inv.length} registros · última carga ${C.fechaHora(ult)} · <b>${ceros.length}</b> en cero` : 'Aún no hay inventario cargado. Las madres ven la lista de farmacias sin semáforo.'}</p>
+        <div class="tscroll" style="max-height:320px;overflow:auto"><table><tr><th>Sucursal</th><th>Producto</th><th>Cant.</th></tr>
+        ${ceros.slice(0, 200).map(i => `<tr><td>${C.esc(sN[i.sucursal_id].codigo)} · ${C.esc(sN[i.sucursal_id].nombre)}</td><td>${C.esc(pN[i.producto_id] || '')}</td><td><span class="chip bad">0</span></td></tr>`).join('') || '<tr><td colspan="3" class="muted">Sin sucursales en cero.</td></tr>'}
+        </table></div></div>
+      ${YO.admin ? `<div class="card"><h2>Cargar inventario</h2>
+        <p class="small muted">Archivo CSV con tres columnas: <b>codigo</b> (de la sucursal, p. ej. FA02), <b>producto</b> (nombre exacto) y <b>cantidad</b>. Cada carga reemplaza la cantidad anterior de esas filas. Los datos de más de 3 días dejan de mostrarse a las madres.</p>
+        <button class="btn sm ghost" id="iPl">Descargar plantilla</button>
+        <label>Fuente (para tu control)</label><input id="iFu" placeholder="Reporte Kielsa 16-nov">
+        <label>Archivo CSV</label><input id="iAr" type="file" accept=".csv,text/csv">
+        <div id="iE"></div><button class="btn" id="iGo" style="margin-top:12px">Cargar</button></div>` : ''}
+    </div>`;
+  cont.querySelectorAll('[data-at]').forEach(b => b.onclick = async () => {
+    const nota = prompt('¿Qué se hizo? (opcional)') ?? '';
+    try { await rpc('cup_atender_desabasto', { p_id: b.dataset.at, p_nota: nota }); inventario(); } catch (e) { alert(C.msg(e)); }
+  });
+  if (!YO.admin) return;
+  $('#iPl').onclick = () => csv('plantilla_inventario.csv', sucs.slice(0, 3).flatMap(s => prods.slice(0, 2).map(p => ({ codigo: s.codigo, producto: p.nombre, cantidad: 0 }))));
+  $('#iGo').onclick = async () => {
+    const f = $('#iAr').files[0]; if (!f) return $('#iE').innerHTML = '<div class="alert warn">Elige un archivo.</div>';
+    const txt = (await f.text()).replace(/^\ufeff/, '');
+    const lin = txt.split(/\r?\n/).filter(l => l.trim());
+    const sep = (lin[0].match(/;/g) || []).length > (lin[0].match(/,/g) || []).length ? ';' : ',';
+    const parte = l => { const o = []; let c = '', q = false; for (const ch of l) { if (ch === '"') q = !q; else if (ch === sep && !q) { o.push(c); c = ''; } else c += ch; } o.push(c); return o.map(x => x.trim()); };
+    const cab = parte(lin[0]).map(x => x.toLowerCase());
+    const ic = cab.indexOf('codigo'), ip = cab.indexOf('producto'), iq = cab.indexOf('cantidad');
+    if (ic < 0 || ip < 0 || iq < 0) return $('#iE').innerHTML = '<div class="alert bad">El archivo debe tener las columnas codigo, producto y cantidad.</div>';
+    const filas = lin.slice(1).map(parte).map(c => ({ codigo: c[ic], producto: c[ip], cantidad: Number(c[iq]) })).filter(r => r.codigo && r.producto && !isNaN(r.cantidad));
+    $('#iGo').disabled = true;
+    try {
+      const r = await rpc('cup_cargar_inventario', { p_filas: filas, p_fuente: $('#iFu').value || f.name });
+      $('#iE').innerHTML = `<div class="alert ${r.rechazadas.length ? 'warn' : 'ok'}">${r.cargadas} filas cargadas.${r.rechazadas.length ? ' No reconocí (sucursal o producto): ' + r.rechazadas.map(x => C.esc(x.codigo + ' / ' + x.producto)).join('; ') : ''}</div>`;
+      $('#iGo').disabled = false;
+    } catch (e) { $('#iE').innerHTML = err(e); $('#iGo').disabled = false; }
   };
 }
 
