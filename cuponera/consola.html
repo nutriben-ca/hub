@@ -425,7 +425,7 @@ async function plantillas() {
     ${pls.map(p => `<tr><td><b>${C.esc(p.nombre)}</b></td><td>${C.esc(p.beneficio || '')}</td><td>${C.esc(prodN(p.producto_id))}</td>
       <td>${p.tipo === 'unico' ? 'Único' : p.tipo === 'cantidad' ? p.usos_por_madre + ' usos' : 'Hasta fecha'}</td>
       <td>${p.vigencia_dias ? p.vigencia_dias + ' días' : ''}${p.fecha_fin ? ' (máx. ' + C.fecha(p.fecha_fin) + ')' : ''}</td>
-      <td>${p.tope_vm_mes ?? 'Sin tope'}</td><td>${p.canal === 'vm' ? 'VM' : 'Bienvenida'}</td>
+      <td>${p.tope_vm_mes ?? 'Sin tope'}${p.requiere_identidad ? ' <span class="chip warn">pide identidad</span>' : ''}</td><td>${p.canal === 'vm' ? 'VM' : 'Bienvenida'}</td>
       <td>${p.activa && !(p.fecha_fin && p.fecha_fin < new Date().toISOString().slice(0, 10)) ? '<span class="chip ok">Activa</span>' : p.activa ? '<span class="chip bad">Vencida</span>' : '<span class="chip gray">Inactiva</span>'}</td>
       <td><button class="btn sm ghost" data-e="${p.id}">Editar</button></td></tr>`).join('')}</table></div></div>`;
   const editor = p => {
@@ -445,6 +445,7 @@ async function plantillas() {
       <div class="row"><div><label>Canal</label><select id="xC"><option value="vm">VM (lo emite el visitador)</option><option value="bienvenida">Bienvenida (automático al registrarse)</option></select></div>
       <div><label>País</label><select id="xPa"><option>Honduras</option><option>El Salvador</option><option>Nicaragua</option><option>Costa Rica</option></select></div></div>
       <label>URL de imagen (opcional)</label><input id="xI" value="${C.esc(p.imagen_url || '')}">
+      <label class="check"><input type="checkbox" id="xId" ${p.requiere_identidad ? 'checked' : ''}><span>Pedir el número de identidad de la madre al canjear (bloquea que la misma persona use varias cuentas)</span></label>
       <label class="check"><input type="checkbox" id="xA" ${p.activa ? 'checked' : ''}><span>Activa</span></label>
       <div id="xE"></div><div class="row"><button class="btn" id="xG">Guardar</button><button class="btn ghost" onclick="cerrarModal()">Cancelar</button></div>`);
     $('#xTi').value = p.tipo; $('#xC').value = p.canal; $('#xPa').value = p.pais;
@@ -454,7 +455,7 @@ async function plantillas() {
       const reg = { nombre: $('#xN').value.trim(), beneficio: $('#xB').value.trim(), descripcion: $('#xD').value.trim(), terminos: $('#xT').value.trim(),
         producto_id: $('#xP').value ? +$('#xP').value : null, tipo, usos_por_madre: tipo === 'cantidad' ? (num('#xU') || 1) : 1,
         vigencia_dias: num('#xV'), fecha_fin: $('#xF').value || null, tope_vm_mes: num('#xTo'), tope_total: num('#xTT'),
-        canal: $('#xC').value, pais: $('#xPa').value, imagen_url: $('#xI').value.trim() || null, activa: $('#xA').checked };
+        canal: $('#xC').value, pais: $('#xPa').value, imagen_url: $('#xI').value.trim() || null, activa: $('#xA').checked, requiere_identidad: $('#xId').checked };
       if (!reg.nombre) return $('#xE').innerHTML = '<div class="alert warn">Falta el nombre.</div>';
       if (!reg.vigencia_dias && !reg.fecha_fin) return $('#xE').innerHTML = '<div class="alert warn">Define días de vigencia o una fecha final.</div>';
       const q = p.id ? sb.from('cup_plantillas').update(reg).eq('id', p.id) : sb.from('cup_plantillas').insert({ ...reg, created_by: YO.id });

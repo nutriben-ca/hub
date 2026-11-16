@@ -31,7 +31,11 @@ window.CUP = {
     CUPO_INVALIDO: 'El cupo debe ser entre 1 y 500.',
     NO_SE_PUEDE_ANULAR: 'Solo se puede anular un cupón sin canjes.',
     NO_AUTORIZADO: 'No tienes permiso para esta acción.',
-    PIN_INVALIDO: 'El PIN debe tener de 4 a 8 números.'
+    PIN_INVALIDO: 'El PIN debe tener de 4 a 8 números.',
+    IDENTIDAD_REQUERIDA: 'Este cupón pide el número de identidad de la madre o tutor.',
+    IDENTIDAD_INVALIDA: 'Revisa el número de identidad (13 dígitos; DUI de 9).',
+    IDENTIDAD_YA_USADA: 'Esa identidad ya está ligada a otra cuenta del club. No apliques el beneficio.',
+    IDENTIDAD_NO_COINCIDE: 'La identidad no coincide con la registrada para esta clienta. No apliques el beneficio.'
   },
   msg(e) {
     const t = (e && (e.message || e.msg || String(e))) || 'Error';

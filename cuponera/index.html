@@ -203,6 +203,7 @@ function pintar(recienRegistrada) {
 
 function tarjetaCupon(c) {
   const chip = { disponible: '<span class="chip ok">Disponible</span>', canjeado: '<span class="chip gray">Canjeado</span>', vencido: '<span class="chip bad">Vencido</span>' }[c.estado] || '';
+  const idn = c.requiere_identidad && c.estado === 'disponible' ? '<div class="alert warn small" style="margin:8px 0 0">Lleva tu tarjeta de identidad: la farmacia te la pedirá para aplicar este cupón.</div>' : '';
   const usos = c.usos_max ? `<span class="chip">${c.usos} de ${c.usos_max} usos</span>` : (c.usos ? `<span class="chip">${c.usos} usos</span>` : '');
   return `<div class="card cupon">
     <div class="ico">${c.imagen ? `<img src="${C.esc(c.imagen)}" alt="">` : C.esc(c.beneficio || '%')}</div>
@@ -210,7 +211,7 @@ function tarjetaCupon(c) {
       <h3 style="margin:0 0 2px">${C.esc(c.nombre)}</h3>
       <div class="small muted">${c.vence ? 'Válido hasta: ' + C.fecha(c.vence) : 'Sin fecha de vencimiento'}</div>
       <div style="margin:6px 0">${chip}${usos}</div>
-      ${c.descripcion ? `<div class="small">${C.esc(c.descripcion)}</div>` : ''}
+      ${c.descripcion ? `<div class="small">${C.esc(c.descripcion)}</div>` : ''}${idn}
       ${c.terminos ? `<details class="tyc"><summary>Términos y condiciones</summary><p>${C.esc(c.terminos)}</p></details>` : ''}
       ${c.estado === 'disponible' ? `<button class="btn orange block" style="margin-top:10px" data-canjear="${C.esc(c.codigo)}">Canjear</button>` : ''}
     </div></div>`;

@@ -122,6 +122,9 @@ async function consultar(codigo) {
         ${r.canjes.length ? `<p class="small muted">Canjes anteriores: ${r.canjes.map(c => C.fechaHora(c.fecha) + ' (' + C.esc(c.sucursal) + ')').join(', ')}</p>` : ''}
         ${r.estado === 'disponible' ? `
           <form id="fCanje">
+            ${r.requiere_identidad ? `<label for="idn">Número de identidad de la madre o tutor</label>
+            <input id="idn" required inputmode="numeric" autocomplete="off" placeholder="0801-1990-12345" maxlength="17">
+            <p class="small muted" style="margin:4px 0 0">Pídele la tarjeta de identidad y escribe el número. Se guarda cifrado; nadie puede volver a verlo.</p>` : ''}
             <label for="fact">Número de factura</label>
             <input id="fact" required maxlength="40" autocomplete="off">
             <div id="eCanje"></div>
@@ -134,7 +137,7 @@ async function consultar(codigo) {
         e.preventDefault();
         const b = $('#bCanje'); b.disabled = true; b.innerHTML = '<span class="spinner"></span> Canjeando…';
         try {
-          const k = await rpc('cup_farm_canjear', { p_token: C.ls.get(TK), p_codigo: r.codigo, p_factura: $('#fact').value });
+          const k = await rpc('cup_farm_canjear', { p_token: C.ls.get(TK), p_codigo: r.codigo, p_factura: $('#fact').value, p_identidad: $('#idn') ? $('#idn').value : null });
           res.innerHTML = `<div class="card"><div class="alert ok" style="margin-top:0;font-weight:700">✓ Canje registrado</div>
             <p>Aplica el beneficio <b>${C.esc(r.beneficio || '')}</b> en la factura <b>${C.esc($('#fact') ? $('#fact').value : '')}</b>.</p>
             <p class="small muted">Para el reembolso, conserva la copia de la factura. ${k.usos_max ? 'Usos: ' + k.usos + ' de ' + k.usos_max + '.' : ''}</p>
