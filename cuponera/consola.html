@@ -56,7 +56,7 @@ const $ = s => document.querySelector(s);
 const app = $('#app');
 const URL_MADRE = new URL('index.html', location.href).href;
 const URL_FARM = new URL('farmacia.html', location.href).href;
-let YO = null, tab = null;
+let YO = null, tab = null, PEND = 0;
 
 async function rpc(fn, args) { const { data, error } = await sb.rpc(fn, args); if (error) throw error; return data; }
 function err(e) { return `<div class="alert bad">${C.esc(C.msg(e))}</div>`; }
@@ -81,6 +81,7 @@ async function arrancar() {
   $('#quien').textContent = YO.nombre + ' · ' + (YO.admin ? 'Administrador' : YO.gerencia ? 'Gerencia' : 'Visitador médico');
   $('#btnSalir').classList.remove('hidden');
   tab = tab || (YO.admin ? 'resumen' : 'emitir');
+  try { PEND = (await rpc('cup_pin_pendientes')).length; } catch (e) { PEND = 0; }
   shell();
 }
 function login() {
@@ -104,7 +105,8 @@ function shell() {
   const tabs = [['emitir', 'Emitir cupón'], ['tarjetas', 'Tarjetas QR'], ['cupones', 'Cupones emitidos'], ['campanas', 'Campañas']];
   if (YO.gerencia) tabs.unshift(['resumen', 'Resumen']);
   if (YO.gerencia || YO.rol === 'controller') tabs.push(['canjes', 'Canjes y reembolsos']);
-  if (YO.admin) tabs.push(['plantillas', 'Plantillas'], ['sucursales', 'Sucursales']);
+  tabs.push(['sucursales', 'Farmacias y PIN' + (PEND ? ' (' + PEND + ')' : '')]);
+  if (YO.admin) tabs.splice(tabs.length - 1, 0, ['plantillas', 'Plantillas']);
   app.innerHTML = `<div class="ntabs">${tabs.map(t => `<button data-t="${t[0]}" class="${tab === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div><div id="cont"></div>`;
   app.querySelectorAll('.ntabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; shell(); });
   ({ resumen, emitir, tarjetas, cupones, campanas, canjes, plantillas, sucursales })[tab]();
@@ -382,47 +384,60 @@ async function plantillas() {
   cont.querySelectorAll('[data-e]').forEach(b => b.onclick = () => editor(pls.find(p => p.id === b.dataset.e)));
 }
 
-// ---------- Sucursales (admin) ----------
+// ---------- Sucursales y PIN (todo el equipo; alta/baja solo admin) ----------
 async function sucursales() {
   const cont = $('#cont'); cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
-  const { data: rows, error } = await sb.from('cup_sucursales').select('id,cadena,nombre,ciudad,pais,codigo,activa,es_prueba,tiene_pin').order('cadena').order('codigo');
+  const [{ data: rows, error }, pend] = await Promise.all([
+    sb.from('cup_sucursales').select('id,cadena,nombre,ciudad,pais,codigo,activa,es_prueba,tiene_pin,pin_cambiado_at').order('cadena').order('codigo'),
+    rpc('cup_pin_pendientes').catch(() => [])]);
+  PEND = pend.length;
   if (error) { cont.innerHTML = err(error); return; }
   const cadenas = [...new Set(rows.map(r => r.cadena))];
-  cont.innerHTML = `<div class="card"><div class="row" style="align-items:end">
+  cont.innerHTML = (pend.length ? `<div class="card" style="border-color:var(--orange)"><h2>Farmacias que pidieron PIN nuevo</h2>
+      <table>${pend.map(p => `<tr><td><b>${C.esc(p.codigo)}</b></td><td>${C.esc(p.cadena)} · ${C.esc(p.nombre)}</td><td>${C.esc(p.ciudad || '')}</td><td class="small muted">${C.fechaHora(p.pedido)}</td>
+      <td><button class="btn sm orange" data-p="${p.id}">Generar PIN nuevo</button></td></tr>`).join('')}</table>
+      <p class="small muted">Llama a la farmacia para confirmar que es ella antes de dictarle el PIN.</p></div>` : '') +
+    `<div class="card"><div class="row" style="align-items:end">
       <div><h2 style="margin:0">${rows.length} sucursales</h2><p class="small muted" style="margin:0">Cada sucursal entra a <a href="${URL_FARM}" target="_blank">la vista de farmacia</a> con su código y PIN.</p></div>
       <div><label style="margin-top:0">Cadena</label><select id="sF"><option value="">Todas</option>${cadenas.map(c => `<option>${C.esc(c)}</option>`).join('')}</select></div>
       <div><label style="margin-top:0">Buscar</label><input id="sB" placeholder="Nombre, ciudad o código"></div>
-      <div style="flex:0 0 auto"><button class="btn" id="sN">Agregar sucursal</button></div></div>
+      ${YO.admin ? '<div style="flex:0 0 auto"><button class="btn" id="sN">Agregar sucursal</button></div>' : ''}</div>
     <div class="tscroll" style="margin-top:10px"><table id="sT"></table></div></div>`;
   const pintar = () => {
     const f = $('#sF').value, q = $('#sB').value.toLowerCase();
     const v = rows.filter(r => (!f || r.cadena === f) && (!q || (r.nombre + r.ciudad + r.codigo).toLowerCase().includes(q)));
     $('#sT').innerHTML = `<tr><th>Código</th><th>Cadena</th><th>Sucursal</th><th>Ciudad</th><th>PIN</th><th>Estado</th><th></th></tr>` +
       v.map(r => `<tr><td><b>${C.esc(r.codigo)}</b></td><td>${C.esc(r.cadena)}</td><td>${C.esc(r.nombre)}</td><td>${C.esc(r.ciudad || '')}</td>
-      <td>${r.tiene_pin ? '<span class="chip ok">Asignado</span>' : '<span class="chip warn">Sin PIN</span>'}</td>
+      <td>${r.tiene_pin ? '<span class="chip ok">Asignado</span>' : '<span class="chip warn">Sin PIN</span>'}${r.pin_cambiado_at ? '<div class="small muted">' + C.fecha(r.pin_cambiado_at) + '</div>' : ''}</td>
       <td>${r.activa ? '<span class="chip ok">Activa</span>' : '<span class="chip gray">Inactiva</span>'}${r.es_prueba ? ' <span class="chip warn">prueba</span>' : ''}</td>
-      <td style="white-space:nowrap"><button class="btn sm ghost" data-p="${r.id}">${r.tiene_pin ? 'Cambiar PIN' : 'Asignar PIN'}</button>
-      <button class="btn sm light" data-a="${r.id}">${r.activa ? 'Desactivar' : 'Activar'}</button></td></tr>`).join('');
-    $('#sT').querySelectorAll('[data-p]').forEach(b => b.onclick = async () => {
-      const r = rows.find(x => x.id === b.dataset.p);
-      const pin = String(Math.floor(1000 + Math.random() * 9000));
-      try {
-        await rpc('cup_set_pin', { p_sucursal: r.id, p_pin: pin });
-        r.tiene_pin = true; pintar();
-        modal(`<h2>PIN de ${C.esc(r.nombre)}</h2><p>Entrégalo a la sucursal. No se vuelve a mostrar.</p>
-          <table><tr><th>Enlace</th><td style="word-break:break-all">${C.esc(URL_FARM)}</td></tr><tr><th>Código</th><td><b>${C.esc(r.codigo)}</b></td></tr><tr><th>PIN</th><td><b style="font-size:1.4rem">${pin}</b></td></tr></table>
-          <button class="btn block" style="margin-top:12px" onclick="cerrarModal()">Listo</button>`);
-      } catch (e) { alert(C.msg(e)); }
-    });
+      <td style="white-space:nowrap"><button class="btn sm ghost" data-p="${r.id}">${r.tiene_pin ? 'PIN nuevo' : 'Asignar PIN'}</button>
+      ${YO.admin ? `<button class="btn sm light" data-a="${r.id}">${r.activa ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('');
+  };
+  const nuevoPin = async id => {
+    const r = rows.find(x => x.id === id) || pend.find(x => x.id === id);
+    if (!confirm('¿Generar un PIN nuevo para ' + r.codigo + ' — ' + r.nombre + '? El PIN anterior deja de funcionar y se cierra la sesión abierta en esa farmacia.')) return;
+    try {
+      const k = await rpc('cup_nuevo_pin', { p_sucursal: id });
+      modal(`<h2>PIN nuevo</h2><p>${C.esc(k.cadena)} · ${C.esc(k.nombre)}</p>
+        <table><tr><th>Enlace</th><td style="word-break:break-all">${C.esc(URL_FARM)}</td></tr><tr><th>Código</th><td><b>${C.esc(k.codigo)}</b></td></tr><tr><th>PIN</th><td><b style="font-size:1.6rem;letter-spacing:3px">${C.esc(k.pin)}</b></td></tr></table>
+        <p class="small muted">Díctaselo a la farmacia. No se vuelve a mostrar.</p>
+        <button class="btn block" style="margin-top:12px" id="okPin">Listo</button>`);
+      $('#okPin').onclick = () => { cerrarModal(); sucursales(); };
+    } catch (e) { alert(C.msg(e)); }
+  };
+  cont.querySelectorAll('.card [data-p]').forEach(b => b.onclick = () => nuevoPin(b.dataset.p));
+  const enlazar = () => {
+    $('#sT').querySelectorAll('[data-p]').forEach(b => b.onclick = () => nuevoPin(b.dataset.p));
     $('#sT').querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
       const r = rows.find(x => x.id === b.dataset.a);
       const { error } = await sb.from('cup_sucursales').update({ activa: !r.activa }).eq('id', r.id);
       if (error) return alert(C.msg(error));
-      r.activa = !r.activa; pintar();
+      r.activa = !r.activa; pintar(); enlazar();
     });
   };
-  $('#sF').onchange = pintar; $('#sB').oninput = pintar; pintar();
-  $('#sN').onclick = () => {
+  const repintar = () => { pintar(); enlazar(); };
+  $('#sF').onchange = repintar; $('#sB').oninput = repintar; repintar();
+  if (YO.admin) $('#sN').onclick = () => {
     modal(`<h2>Agregar sucursal</h2>
       <label>Cadena</label><input id="nC" list="lc"><datalist id="lc">${cadenas.concat(['Farmacias Kielsa']).map(c => `<option>${C.esc(c)}</option>`).join('')}</datalist>
       <label>Nombre de la sucursal</label><input id="nN">

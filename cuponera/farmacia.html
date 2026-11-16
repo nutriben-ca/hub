@@ -51,7 +51,17 @@ function login(aviso) {
       <input id="pin" required type="password" inputmode="numeric" autocomplete="current-password" maxlength="8">
       <div id="eLog"></div>
       <button class="btn block" id="bLog" type="submit">Ingresar</button>
+      <p class="small" style="text-align:center;margin:12px 0 0"><a href="#" id="olv">¿Olvidaste tu PIN?</a></p>
     </form>`;
+  $('#olv').onclick = async e => {
+    e.preventDefault();
+    const cod = $('#cod').value.trim();
+    if (!cod) { $('#eLog').innerHTML = '<div class="alert warn">Escribe primero el código de tu sucursal.</div>'; return; }
+    try {
+      await rpc('cup_farm_olvide', { p_codigo: cod });
+      $('#eLog').innerHTML = `<div class="alert info">Listo. Avisamos a Nutribén: tu visitador médico te dará un PIN nuevo. Si es urgente, escribe al WhatsApp ${C.esc(C.WHATSAPP_TXT)}.</div>`;
+    } catch (err) { $('#eLog').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`; }
+  };
   $('#fLog').onsubmit = async e => {
     e.preventDefault();
     const b = $('#bLog'); b.disabled = true;
