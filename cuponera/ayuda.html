@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Instructivo Cuponera Nutribén</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: cabecera de marca, pestañas por público, lista de tareas con video + pasos lado a lado (apila en móvil) */
+:root{
+  --bg:#F6F8FC; --surface:#FFFFFF; --ink:#132046; --muted:#5A6684; --line:#DDE4F0;
+  --navy:#0033A1; --sky:#00A0DF; --sky-soft:#EAF5FC; --orange:#FAA334; --orange-ink:#5A3500;
+  --chip:#EEF2FA; --shadow:0 1px 2px rgba(19,32,70,.06),0 8px 24px rgba(19,32,70,.06);
+  --f-body:"Poppins",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0B1226; --surface:#121C36; --ink:#E7ECF7; --muted:#9AA6C4; --line:#24304F;
+  --navy:#7FA6FF; --sky:#45C1F0; --sky-soft:#16284A; --orange:#FFB75A; --orange-ink:#2B1800;
+  --chip:#1B2747; --shadow:none; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0B1226; --surface:#121C36; --ink:#E7ECF7; --muted:#9AA6C4; --line:#24304F;
+  --navy:#7FA6FF; --sky:#45C1F0; --sky-soft:#16284A; --orange:#FFB75A; --orange-ink:#2B1800;
+  --chip:#1B2747; --shadow:none; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{background:var(--surface);border-bottom:1px solid var(--line)}
+header.top .wrap{padding-block:22px 0}
+.brand{font-weight:700;color:var(--navy);font-size:1.05rem;letter-spacing:-.2px}
+.brand sup{font-size:.6em}
+h1{font-size:clamp(1.5rem,3.4vw,2.1rem);line-height:1.15;margin:.2em 0 .25em;text-wrap:balance;letter-spacing:-.5px}
+.lead{color:var(--muted);max-width:68ch;margin:0 0 18px}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.82rem;color:var(--muted);margin:0 0 18px}
+.flow span{background:var(--chip);border-radius:99px;padding:4px 10px;color:var(--ink)}
+.flow i{font-style:normal;color:var(--sky)}
+nav.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+nav.tabs a{flex:0 0 auto;text-decoration:none;color:var(--muted);font-weight:600;padding:10px 14px;border-bottom:3px solid transparent}
+nav.tabs a[aria-current="page"]{color:var(--navy);border-bottom-color:var(--sky)}
+nav.tabs a:focus-visible{outline:2px solid var(--sky);outline-offset:2px;border-radius:6px}
+main .wrap{padding-block:24px 48px}
+.intro{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start;margin-bottom:20px}
+.intro h2{margin:0 0 4px;font-size:1.35rem;color:var(--navy)}
+.intro p{margin:0;color:var(--muted);max-width:66ch}
+.link{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.82rem;min-width:0;max-width:340px}
+.link b{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
+.link code{font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all;color:var(--ink);user-select:all}
+.link button{margin-top:6px;font:inherit;font-size:.78rem;font-weight:600;border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer}
+.tareas{display:flex;flex-direction:column;gap:18px}
+.tarea{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);overflow:hidden}
+.tarea.movil{grid-template-columns:minmax(0,300px) minmax(0,1fr)}
+.tarea .media{background:#0B1530;display:flex;align-items:center;justify-content:center}
+.tarea video{display:block;width:100%;height:auto;max-height:560px;background:#0B1530}
+.tarea .txt{padding:18px 20px;min-width:0}
+.tarea h3{margin:0 0 2px;font-size:1.08rem;text-wrap:balance}
+.tarea .dur{font-size:.75rem;color:var(--muted);font-variant-numeric:tabular-nums}
+ol.pasos{margin:12px 0 0;padding:0;list-style:none;counter-reset:p;display:flex;flex-direction:column;gap:8px}
+ol.pasos li{counter-increment:p;display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;font-size:.92rem}
+ol.pasos li::before{content:counter(p);width:22px;height:22px;border-radius:50%;background:var(--sky-soft);color:var(--navy);font-weight:700;font-size:.75rem;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.nota{margin-top:12px;font-size:.84rem;background:var(--sky-soft);border-radius:10px;padding:8px 12px;color:var(--ink)}
+.nota.ojo{background:color-mix(in srgb,var(--orange) 22%,var(--surface))}
+.faq{margin-top:26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.faq div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.faq b{display:block;margin-bottom:4px}
+.faq p{margin:0;font-size:.88rem;color:var(--muted)}
+.tarjeta{display:flex;width:min(100%,360px);aspect-ratio:9/5;border-radius:10px;overflow:hidden;box-shadow:var(--shadow);margin:6px 0 4px}
+.tarjeta .a{flex:1;background:#0033A1;color:#fff;padding:0 18px;display:flex;flex-direction:column;justify-content:center}
+.tarjeta .a b{font-family:Georgia,serif;font-size:1.6rem;line-height:1.05}
+.tarjeta .a small{font-size:.66rem;opacity:.9;margin-top:8px}
+.tarjeta .b{width:38%;background:#fff;color:#0033A1;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.58rem;text-align:center;padding:6px;gap:4px}
+.tarjeta .qr{width:70%;aspect-ratio:1;background:repeating-conic-gradient(#0033A1 0 25%,#fff 0 50%) 0 0/22% 22%;border:4px solid #fff;outline:2px solid #0033A1}
+footer{border-top:1px solid var(--line);color:var(--muted);font-size:.8rem}
+footer .wrap{padding-block:18px 28px}
+@media (max-width:760px){
+  .tarea,.tarea.movil{grid-template-columns:minmax(0,1fr)}
+  .tarea.movil .media video{max-height:520px;width:auto;max-width:100%}
+  .intro{grid-template-columns:minmax(0,1fr)}
+  .link{max-width:none}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap">
+  <div class="brand">Nutribén<sup>®</sup> · Cuponera digital</div>
+  <h1>Cómo usar la cuponera</h1>
+  <p class="lead">Un video corto por tarea. Los videos usan datos de demostración: los nombres, códigos y PIN que aparecen no son reales.</p>
+  <div class="flow" aria-label="Recorrido del cupón">
+    <span>VM entrega tarjetas al médico</span><i>→</i><span>Médico la da a la madre</span><i>→</i><span>Madre escanea y se registra</span><i>→</i><span>Muestra su código en caja</span><i>→</i><span>Farmacia canjea y pide reembolso</span>
+  </div>
+  <nav class="tabs" aria-label="Público">
+    <a href="#farmacias">Farmacias</a>
+    <a href="#visitadores">Visitadores</a>
+    <a href="#madres">Madres</a>
+    <a href="#medicos">Médicos</a>
+  </nav>
+</div></header>
+
+<main><div class="wrap" id="contenido"></div></main>
+
+<footer><div class="wrap">Dudas sobre la cuponera: WhatsApp del Club Nutribén <b style="user-select:all">+504 3244-8503</b>. La leche materna es el mejor alimento para el lactante.</div></footer>
+
+<script>
+const BASE = 'https://nutriben-ca.github.io/hub/cuponera/';
+const S = {
+  farmacias: {
+    titulo: 'Farmacias', intro: 'Para la cajera o el dependiente. Se usa desde la computadora de la caja: se entra una vez y la sesión dura 30 días.',
+    enlace: BASE + 'farmacia.html', enlaceTxt: 'Enlace de la vista de farmacia',
+    tareas: [
+      ['farmacia-ingreso', 'Ingresar por primera vez', ['Abre el enlace de la vista de farmacia en la computadora de la caja.', 'Escribe el código de tu sucursal (por ejemplo FA02) y el PIN que te entregó Nutribén.', 'Toca Ingresar. No tendrás que volver a escribirlo en 30 días.'], 'Cada sucursal tiene su propio código y PIN. No los compartas con otras sucursales.'],
+      ['farmacia-canjear', 'Canjear un cupón', ['La clienta te muestra el código en su celular (empieza con NB).', 'Escríbelo y toca Consultar cupón.', 'Si sale VÁLIDO en verde, revisa el producto y el beneficio.', 'Escribe el número de factura y toca Confirmar canje.', 'Aplica el beneficio en la factura y guarda la copia.'], 'El número de factura es obligatorio: sin él no hay reembolso.'],
+      ['farmacia-rechazo', 'Cuando el cupón no es válido', ['Si sale en rojo (ya canjeado, vencido o anulado), no apliques el beneficio.', 'La pantalla muestra cuándo y en qué sucursal se usó.', 'La clienta puede escribir al WhatsApp del club para aclararlo.'], null, true],
+      ['farmacia-olvide-pin', 'Olvidé mi PIN', ['En la pantalla de ingreso escribe el código de tu sucursal.', 'Toca ¿Olvidaste tu PIN?.', 'Tu visitador médico recibe el aviso y te llama con un PIN nuevo.'], 'Por seguridad el PIN nuevo solo lo da Nutribén por teléfono, después de confirmar que eres tú.'],
+      ['farmacia-reporte', 'Reporte para reembolso', ['Entra a la pestaña Reporte.', 'Elige las fechas y toca Ver canjes.', 'Imprime el reporte y preséntalo con las copias de las facturas.'], 'Reembolso de cupones: copia de la factura de cada canje del reporte.']
+    ],
+    faq: [['¿La clienta puede canjear sin celular?', 'Sí, si te dicta el código. Lo importante es el código, no el teléfono.'], ['¿Puedo canjear el mismo cupón dos veces?', 'Solo los cupones de varios usos (por ejemplo 2+1, hasta 3 veces). El sistema lleva la cuenta.'], ['¿Qué pasa si cierro el navegador?', 'Nada. La sesión sigue abierta en esa computadora hasta por 30 días.']]
+  },
+  visitadores: {
+    titulo: 'Visitadores médicos', intro: 'Entras con la misma cuenta de la app de gastos. Solo puedes emitir desde las plantillas aprobadas y a médicos de tu panel, con un tope mensual por plantilla.',
+    enlace: BASE + 'consola.html', enlaceTxt: 'Enlace de la consola',
+    tareas: [
+      ['vm-ingreso', 'Entrar a la consola', ['Abre la consola desde el hub (tarjeta Cuponera digital).', 'Escribe tu correo y contraseña de la app de gastos.'], null],
+      ['vm-tarjetas', 'Imprimir las tarjetas QR de un médico', ['Ve a Tarjetas QR y busca al médico.', 'Revisa la vista previa: el QR es único de ese médico.', 'Elige cuántas imprimir y toca Imprimir tarjetas.', 'Imprime en cartulina, 9 × 5 cm, y entrégalas al médico.'], 'Toda madre que escanee esa tarjeta queda registrada con ese médico. Así sabemos quién inició la fórmula.'],
+      ['vm-emitir-madre', 'Emitir un cupón a una madre', ['Elige la plantilla. Ves cuántos te quedan este mes.', 'Busca al médico de tu panel.', 'Escribe el celular de la madre. Si es nueva, completa nombre, bebé y fecha de nacimiento.', 'Marca que autorizó el uso de datos y toca Emitir.', 'Envíale el aviso por WhatsApp con el botón verde.'], 'Si la madre ya tiene ese mismo cupón, el sistema no deja emitirlo dos veces.'],
+      ['vm-campana', 'Crear una campaña para un médico', ['Elige la plantilla y el médico.', 'Cambia a Campaña para pacientes del médico.', 'Define el cupo (cuántas madres) y, si quieres, una fecha límite.', 'Toca Emitir.'], 'El cupo completo se descuenta de tu tope del mes. Si cierras la campaña antes, se libera lo no usado.'],
+      ['vm-pin-farmacia', 'Darle un PIN nuevo a una farmacia', ['Abre Farmacias y PIN. Las solicitudes aparecen arriba en naranja.', 'Llama a la farmacia para confirmar que es ella.', 'Toca Generar PIN nuevo y díctaselo.'], 'El PIN anterior deja de funcionar al instante y se cierra la sesión abierta en esa farmacia.', true],
+      ['vm-cupones', 'Seguimiento de lo emitido', ['En Cupones emitidos ves cada cupón: disponible, canjeado o vencido.', 'Puedes anular uno que aún no se ha usado.', 'En Campañas ves cuánto cupo lleva usado cada médico.'], null]
+    ],
+    faq: [['¿Por qué no puedo elegir una plantilla?', 'Ya usaste tu tope del mes para esa plantilla. Se renueva el día 1.'], ['¿Por qué no aparece un médico?', 'Solo ves los médicos de tu panel. Si falta alguno, avísale a Ricardo.'], ['¿Puedo crear mis propios cupones?', 'No. Las plantillas las define la gerencia; tú eliges cuál emitir.']]
+  },
+  madres: {
+    titulo: 'Madres', intro: 'Para compartir con las mamás. No necesitan descargar nada ni crear contraseña: se entra con el celular.',
+    enlace: BASE, enlaceTxt: 'Enlace del Club de beneficios',
+    tareas: [
+      ['madre-registro', 'Registrarme con la tarjeta de mi pediatra', ['Escanea con la cámara el QR de la tarjeta Comienzo saludable.', 'Escribe tu nombre y tu celular de WhatsApp.', 'Agrega el nombre y la fecha de nacimiento de tu bebé.', 'Elige tu farmacia, acepta el uso de datos y toca Registrarme.', 'Tus cupones aparecen de inmediato.'], null, false, true],
+      ['madre-canjear', 'Usar un cupón en la farmacia', ['En la farmacia, abre el club en tu celular.', 'Toca Canjear en el cupón que vas a usar.', 'Muestra el código en caja. La farmacia lo valida y aplica el beneficio.'], 'Revisa los términos de cada cupón: dicen en qué producto aplica.', false, true],
+      ['madre-entrar', 'Entrar desde otro teléfono', ['Abre el enlace del club y toca Ya estoy registrada.', 'Escribe tu celular y la fecha de nacimiento de tu bebé.', 'Vuelves a ver tus cupones.'], null, false, true]
+    ],
+    faq: [['¿Tiene costo?', 'No. El club y la consejería son gratis.'], ['¿Y si mi bebé solo toma pecho?', 'La leche materna es el mejor alimento. El club también te acompaña con consejería.'], ['¿Quién ve mis datos?', 'Solo Casa Ferne (Nutribén), para darte los beneficios. Puedes pedir que los borren por WhatsApp.']]
+  },
+  medicos: {
+    titulo: 'Médicos', intro: 'El médico no usa ninguna aplicación. Su papel es entregar la tarjeta Comienzo saludable a los padres al indicar la fórmula.',
+    enlace: null,
+    especial: true,
+    tareas: [
+      ['madre-registro', 'Lo que hace la madre al recibir su tarjeta', ['Entregue la tarjeta junto con la indicación o la muestra.', 'La madre escanea el QR con su celular y se registra en un minuto.', 'Queda registrada como paciente suya, con los cupones que su visitador le asignó.'], 'Cada tarjeta lleva un QR único del médico. No las intercambie con colegas.', false, true]
+    ],
+    faq: [['¿Debo registrarme?', 'No. Su visitador médico genera e imprime sus tarjetas.'], ['¿Qué beneficio recibe la madre?', 'El que su visitador active para sus pacientes: descuentos o 2+1 en farmacias participantes.'], ['¿Se me comparten datos de las madres?', 'No. Su visitador le puede dar el número de madres registradas con sus tarjetas.']]
+  }
+};
+const ORDEN = ['farmacias', 'visitadores', 'madres', 'medicos'];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function pintar() {
+  let k = (location.hash || '').slice(1);
+  if (!S[k]) k = 'farmacias';
+  document.querySelectorAll('nav.tabs a').forEach(a => a.getAttribute('href') === '#' + k ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  const s = S[k];
+  const tarjeta = s.especial ? `<div class="tarjeta" aria-label="Ejemplo de tarjeta"><div class="a"><b>Comienzo<br>saludable</b><small>Tu pediatra te recomienda el Club Nutribén</small></div><div class="b">Escanea para ingresar al formulario de registro<div class="qr"></div>WhatsApp +504 3244-8503</div></div>` : '';
+  document.getElementById('contenido').innerHTML = `
+    <div class="intro"><div><h2>${esc(s.titulo)}</h2><p>${esc(s.intro)}</p>${tarjeta}</div>
+      ${s.enlace ? `<div class="link"><b>${esc(s.enlaceTxt)}</b><code>${esc(s.enlace)}</code><br><button type="button" data-copy="${esc(s.enlace)}">Copiar enlace</button></div>` : ''}</div>
+    <div class="tareas">${s.tareas.map(t => `
+      <article class="tarea${t[5] ? ' movil' : ''}">
+        <div class="media"><video src="v/${t[0]}.mp4" poster="v/${t[0]}.jpg" controls muted playsinline preload="none" aria-label="Video: ${esc(t[1])}"></video></div>
+        <div class="txt"><h3>${esc(t[1])}</h3><div class="dur">Video sin sonido</div>
+          <ol class="pasos">${t[2].map(p => `<li><span>${esc(p)}</span></li>`).join('')}</ol>
+          ${t[3] ? `<div class="nota${t[4] ? ' ojo' : ''}">${esc(t[3])}</div>` : ''}</div>
+      </article>`).join('')}</div>
+    <div class="faq">${s.faq.map(f => `<div><b>${esc(f[0])}</b><p>${esc(f[1])}</p></div>`).join('')}</div>`;
+  document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => {
+    navigator.clipboard.writeText(b.dataset.copy).then(() => { b.textContent = 'Copiado'; }).catch(() => {
+      const c = b.parentElement.querySelector('code'); const r = document.createRange(); r.selectNodeContents(c); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    });
+  });
+  document.querySelectorAll('video').forEach(v => v.addEventListener('play', () => document.querySelectorAll('video').forEach(o => { if (o !== v) o.pause(); })));
+}
+addEventListener('hashchange', () => { pintar(); scrollTo(0, 0); });
+pintar();
+</script>
+</body>
+</html>
