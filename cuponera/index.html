@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Club de beneficios Nutribén</title>
+<meta name="theme-color" content="#0033A1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div class="brand">Nutribén<sup>®</sup></div>
+  <button id="btnSalir" class="btn sm light hidden" type="button">Salir</button>
+</div></header>
+
+<main class="wrap" id="app">
+  <div class="card"><span class="spinner"></span> Cargando…</div>
+</main>
+
+<div class="foot">
+  ¿Dudas? Escríbenos por WhatsApp: <a id="waLink" href="#" target="_blank" rel="noopener"></a><br>
+  La leche materna es el mejor alimento para el lactante.
+</div>
+
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true"><div class="box" id="modalBox"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script>
+const C = window.CUP;
+const sb = supabase.createClient(C.SUPABASE_URL, C.SUPABASE_KEY, { auth: { persistSession: false } });
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const params = new URLSearchParams(location.search);
+const TARJETA = (params.get('t') || '').trim().toUpperCase();
+const TK = 'cup_madre_token';
+let estado = { tab: 'disp', datos: null };
+
+$('#waLink').textContent = C.WHATSAPP_TXT;
+$('#waLink').href = 'https://wa.me/' + C.WHATSAPP;
+
+async function rpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw error;
+  return data;
+}
+
+function hoyMenos(dias) { const d = new Date(); d.setDate(d.getDate() - dias); return d.toISOString().slice(0, 10); }
+
+// ---------- Pantallas ----------
+async function inicio() {
+  const tok = C.ls.get(TK);
+  if (tok) return cargarCupones();
+  if (TARJETA) return registro();
+  bienvenida();
+}
+
+function bienvenida() {
+  $('#btnSalir').classList.add('hidden');
+  app.innerHTML = `
+    <div class="hero">
+      <h1>Club de beneficios</h1>
+      <p style="margin:0;opacity:.9">Cupones para la nutrición de tu bebé, consejería gratuita y eventos especiales.</p>
+    </div>
+    <div class="card">
+      <h2>¿Primera vez?</h2>
+      <p class="muted small">Si tu pediatra te dio una tarjeta <b>Comienzo saludable</b>, escanea su código QR: así quedas registrada con tu médico.</p>
+      <button class="btn block" id="bReg">Registrarme sin tarjeta</button>
+    </div>
+    <div class="card">
+      <h2>Ya estoy registrada</h2>
+      <p class="muted small">Entra con tu celular y la fecha de nacimiento de tu bebé.</p>
+      <button class="btn block ghost" id="bIng">Entrar</button>
+    </div>`;
+  $('#bReg').onclick = () => registro();
+  $('#bIng').onclick = () => ingresar();
+}
+
+async function registro() {
+  let medico = null;
+  if (TARJETA) {
+    try { const r = await rpc('cup_tarjeta_info', { p_codigo: TARJETA }); medico = r && r.medico; } catch (e) {}
+  }
+  let farmacias = [];
+  try { farmacias = await rpc('cup_lista_farmacias'); } catch (e) {}
+  app.innerHTML = `
+    <div class="hero">
+      <h1>Regístrate</h1>
+      <p style="margin:0;opacity:.95">${medico ? 'Tu pediatra <b>Dr(a). ' + C.esc(titulo(medico)) + '</b> te recomienda el Club Nutribén.' : 'Disfruta de los beneficios del Club Nutribén.'}</p>
+    </div>
+    <form class="card" id="fReg" autocomplete="on">
+      <label for="nombre">Tu nombre completo</label>
+      <input id="nombre" required maxlength="80" autocomplete="name">
+      <label for="cel">Tu celular (WhatsApp)</label>
+      <input id="cel" required inputmode="tel" placeholder="9999-9999" autocomplete="tel" maxlength="16">
+      <div class="row">
+        <div><label for="bebe">Nombre del bebé</label><input id="bebe" maxlength="60"></div>
+        <div><label for="nac">Fecha de nacimiento del bebé</label><input id="nac" type="date" required max="${hoyMenos(0)}" min="${hoyMenos(1095)}"></div>
+      </div>
+      ${medico ? '' : `<label for="med">¿Qué pediatra te recomendó el club? (opcional)</label><input id="med" maxlength="80">`}
+      <label for="farm">¿En qué farmacia compras normalmente?</label>
+      <select id="farm"><option value="">Selecciona…</option>${farmacias.filter(f => f !== 'Prueba').map(f => `<option>${C.esc(f)}</option>`).join('')}<option>Otra</option></select>
+      <label class="check"><input type="checkbox" id="cDatos" required>
+        <span>Autorizo a Casa Ferne, S.A. (Nutribén) a guardar mis datos y los de mi bebé para darme los beneficios del club y medir su uso. Puedo pedir que los borren escribiendo al WhatsApp del club.</span></label>
+      <label class="check"><input type="checkbox" id="cCont" checked>
+        <span>Acepto que una enfermera del Club Nutribén me contacte por WhatsApp o llamada para darme seguimiento.</span></label>
+      <div id="eReg"></div>
+      <button class="btn block orange" id="bEnviar" type="submit">Registrarme y ver mis cupones</button>
+      <p class="small muted" style="text-align:center;margin:12px 0 0"><a href="#" id="yaReg">Ya estoy registrada</a></p>
+    </form>`;
+  $('#yaReg').onclick = e => { e.preventDefault(); ingresar(); };
+  $('#fReg').onsubmit = async e => {
+    e.preventDefault();
+    const b = $('#bEnviar'); b.disabled = true; b.innerHTML = '<span class="spinner"></span> Registrando…';
+    $('#eReg').innerHTML = '';
+    try {
+      const r = await rpc('cup_registrar', {
+        p_tarjeta: TARJETA || null, p_nombre: $('#nombre').value, p_celular: $('#cel').value,
+        p_bebe_nombre: $('#bebe').value, p_bebe_nac: $('#nac').value || null, p_farmacia: $('#farm').value,
+        p_consent_contacto: $('#cCont').checked, p_consent_datos: $('#cDatos').checked,
+        p_medico_texto: $('#med') ? $('#med').value : null });
+      C.ls.set(TK, r.token);
+      history.replaceState(null, '', location.pathname);
+      cargarCupones(true);
+    } catch (err) {
+      $('#eReg').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`;
+      b.disabled = false; b.textContent = 'Registrarme y ver mis cupones';
+    }
+  };
+}
+
+function ingresar() {
+  app.innerHTML = `
+    <form class="card" id="fIng">
+      <h2>Entrar al club</h2>
+      <label for="icel">Tu celular</label>
+      <input id="icel" required inputmode="tel" placeholder="9999-9999" autocomplete="tel">
+      <label for="inac">Fecha de nacimiento del bebé</label>
+      <input id="inac" type="date" required max="${hoyMenos(0)}">
+      <div id="eIng"></div>
+      <button class="btn block" id="bIng2" type="submit">Entrar</button>
+      <p class="small muted" style="text-align:center;margin:12px 0 0"><a href="#" id="volver">Volver</a></p>
+    </form>`;
+  $('#volver').onclick = e => { e.preventDefault(); TARJETA ? registro() : bienvenida(); };
+  $('#fIng').onsubmit = async e => {
+    e.preventDefault();
+    const b = $('#bIng2'); b.disabled = true;
+    try {
+      const r = await rpc('cup_ingresar', { p_celular: $('#icel').value, p_bebe_nac: $('#inac').value });
+      C.ls.set(TK, r.token);
+      history.replaceState(null, '', location.pathname);
+      cargarCupones();
+    } catch (err) {
+      $('#eIng').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`;
+      b.disabled = false;
+    }
+  };
+}
+
+async function cargarCupones(recienRegistrada) {
+  try {
+    estado.datos = await rpc('cup_mis_cupones', { p_token: C.ls.get(TK) });
+  } catch (err) {
+    if (String(err.message || '').includes('SESION_INVALIDA')) { C.ls.del(TK); return inicio(); }
+    app.innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div><button class="btn" onclick="location.reload()">Reintentar</button>`;
+    return;
+  }
+  $('#btnSalir').classList.remove('hidden');
+  pintar(recienRegistrada);
+}
+
+function titulo(s) { return String(s || '').toLowerCase().replace(/(^|\s)\S/g, m => m.toUpperCase()); }
+
+function pintar(recienRegistrada) {
+  const d = estado.datos, m = d.madre;
+  const disp = d.cupones.filter(c => c.estado === 'disponible');
+  const usados = d.cupones.filter(c => c.estado !== 'disponible');
+  const total = d.cupones.length, canj = d.cupones.filter(c => c.usos > 0).length;
+  const lista = estado.tab === 'disp' ? disp : usados;
+  app.innerHTML = `
+    ${recienRegistrada ? '<div class="alert ok">¡Bienvenida al Club Nutribén! Ya puedes usar tus cupones.</div>' : ''}
+    <div style="margin:4px 0 10px">
+      <h1 style="color:var(--ink);font-weight:400">Hola <b style="color:var(--navy)">${C.esc(m.nombre.split(' ')[0])}</b></h1>
+      ${m.bebe ? `<div class="muted small">Club de ${C.esc(m.bebe)}${m.medico ? ' · Pediatra: Dr(a). ' + C.esc(titulo(m.medico)) : ''}</div>` : ''}
+      <div class="prog" style="margin-top:10px" title="Cupones usados"><i style="width:${total ? Math.round(canj / total * 100) : 0}%"></i></div>
+      <div class="small muted" style="margin-top:4px">${canj} de ${total} cupones usados</div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="${estado.tab === 'disp' ? 'on' : ''}" data-t="disp">Cupones disponibles (${disp.length})</button>
+      <button class="${estado.tab === 'usados' ? 'on' : ''}" data-t="usados">Canjeados</button>
+    </div>
+    <div id="lista">${lista.length ? lista.map(tarjetaCupon).join('') :
+      `<div class="card muted" style="text-align:center">${estado.tab === 'disp' ? 'No tienes cupones disponibles por ahora. Pregúntale a tu pediatra por los beneficios del club.' : 'Aún no has canjeado cupones.'}</div>`}</div>
+    <button class="btn light block" id="bRef" type="button">Actualizar</button>`;
+  app.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { estado.tab = b.dataset.t; pintar(); });
+  app.querySelectorAll('[data-canjear]').forEach(b => b.onclick = () => mostrarCodigo(b.dataset.canjear));
+  $('#bRef').onclick = () => cargarCupones();
+}
+
+function tarjetaCupon(c) {
+  const chip = { disponible: '<span class="chip ok">Disponible</span>', canjeado: '<span class="chip gray">Canjeado</span>', vencido: '<span class="chip bad">Vencido</span>' }[c.estado] || '';
+  const usos = c.usos_max ? `<span class="chip">${c.usos} de ${c.usos_max} usos</span>` : (c.usos ? `<span class="chip">${c.usos} usos</span>` : '');
+  return `<div class="card cupon">
+    <div class="ico">${c.imagen ? `<img src="${C.esc(c.imagen)}" alt="">` : C.esc(c.beneficio || '%')}</div>
+    <div>
+      <h3 style="margin:0 0 2px">${C.esc(c.nombre)}</h3>
+      <div class="small muted">${c.vence ? 'Válido hasta: ' + C.fecha(c.vence) : 'Sin fecha de vencimiento'}</div>
+      <div style="margin:6px 0">${chip}${usos}</div>
+      ${c.descripcion ? `<div class="small">${C.esc(c.descripcion)}</div>` : ''}
+      ${c.terminos ? `<details class="tyc"><summary>Términos y condiciones</summary><p>${C.esc(c.terminos)}</p></details>` : ''}
+      ${c.estado === 'disponible' ? `<button class="btn orange block" style="margin-top:10px" data-canjear="${C.esc(c.codigo)}">Canjear</button>` : ''}
+    </div></div>`;
+}
+
+function mostrarCodigo(codigo) {
+  const c = estado.datos.cupones.find(x => x.codigo === codigo);
+  $('#modalBox').innerHTML = `
+    <h2 style="text-align:center">${C.esc(c.nombre)}</h2>
+    <p class="small muted" style="text-align:center;margin:0">Muestra este código en la caja de la farmacia participante.</p>
+    <div class="code-big">${C.esc(codigo.slice(0, 4) + ' ' + codigo.slice(4))}</div>
+    <div class="qr" id="qrBox"></div>
+    <p class="small" style="text-align:center">La farmacia escribe el código, lo valida y te aplica el beneficio en tu factura.</p>
+    <button class="btn block" id="bCerrar">Listo</button>`;
+  $('#modal').classList.remove('hidden');
+  try { new QRCode($('#qrBox'), { text: codigo, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
+  $('#bCerrar').onclick = () => { $('#modal').classList.add('hidden'); cargarCupones(); };
+}
+
+$('#btnSalir').onclick = () => {
+  if (!confirm('¿Salir del club en este teléfono? Puedes volver a entrar con tu celular y la fecha de nacimiento de tu bebé.')) return;
+  C.ls.del(TK); bienvenida();
+};
+
+inicio();
+</script>
+</body>
+</html>

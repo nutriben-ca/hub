@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cuponera Nutribén — Consola</title>
+<meta name="theme-color" content="#0033A1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilos.css">
+<style>
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:820px){.grid2{grid-template-columns:1fr}}
+  .lista-med{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:6px}
+  .lista-med div{padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:.88rem}
+  .lista-med div:hover,.lista-med div.on{background:var(--sky3)}
+  .seg{display:flex;gap:6px;margin:10px 0}
+  .seg button{flex:1;border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:10px;font:inherit;font-weight:600;cursor:pointer;color:var(--muted)}
+  .seg button.on{border-color:var(--navy);color:var(--navy);background:var(--sky3)}
+  .plant{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin:6px 0;cursor:pointer}
+  .plant.on{border-color:var(--navy);background:var(--sky3)}
+  .plant.agot{opacity:.5;cursor:not-allowed}
+  /* Tarjeta física 9 x 5 cm */
+  .tarjetas{display:flex;flex-wrap:wrap;gap:8px}
+  .tfis{width:9cm;height:5cm;display:flex;border-radius:6px;overflow:hidden;border:1px solid #ccd;background:#0033A1;color:#fff;page-break-inside:avoid}
+  .tfis .izq{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 .5cm}
+  .tfis .izq b{font-family:Georgia,serif;font-size:19pt;line-height:1.05}
+  .tfis .izq small{font-size:7pt;opacity:.9;margin-top:6px}
+  .tfis .der{width:3.6cm;background:#fff;color:#0033A1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;font-size:6pt;text-align:center}
+  .tfis .der .q{width:2.6cm;height:2.6cm;margin:3px 0}
+  .tfis .der .q img,.tfis .der .q canvas{width:2.6cm!important;height:2.6cm!important}
+  @media print{
+    header,.ntabs,.noprint{display:none!important}
+    .card{border:0;padding:0}
+    @page{margin:1cm}
+  }
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap-wide">
+  <div><div class="brand">Nutribén<sup>®</sup> <span style="font-weight:400;font-size:1rem;color:var(--muted)">Cuponera</span></div>
+  <div class="small muted" id="quien"></div></div>
+  <button id="btnSalir" class="btn sm light hidden" type="button">Cerrar sesión</button>
+</div></header>
+
+<main class="wrap-wide" id="app"><div class="card"><span class="spinner"></span> Cargando…</div></main>
+<div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script>
+const C = window.CUP;
+const sb = supabase.createClient(C.SUPABASE_URL, C.SUPABASE_KEY);
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const URL_MADRE = new URL('index.html', location.href).href;
+const URL_FARM = new URL('farmacia.html', location.href).href;
+let YO = null, tab = null;
+
+async function rpc(fn, args) { const { data, error } = await sb.rpc(fn, args); if (error) throw error; return data; }
+function err(e) { return `<div class="alert bad">${C.esc(C.msg(e))}</div>`; }
+function titulo(s) { return String(s || '').toLowerCase().replace(/(^|\s)\S/g, m => m.toUpperCase()); }
+function modal(html) { $('#modalBox').innerHTML = html; $('#modal').classList.remove('hidden'); }
+function cerrarModal() { $('#modal').classList.add('hidden'); }
+$('#modal').onclick = e => { if (e.target.id === 'modal') cerrarModal(); };
+function qr(el, text, size) { el.innerHTML = ''; try { new QRCode(el, { text, width: size || 200, height: size || 200, correctLevel: QRCode.CorrectLevel.M }); } catch (e) {} }
+function csv(nombre, filas) {
+  if (!filas.length) return;
+  const cols = Object.keys(filas[0]);
+  const t = [cols.join(',')].concat(filas.map(f => cols.map(c => '"' + String(f[c] ?? '').replace(/"/g, '""') + '"').join(','))).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + t], { type: 'text/csv' })); a.download = nombre; a.click();
+}
+
+// ---------- Sesión ----------
+async function arrancar() {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) return login();
+  try { YO = await rpc('cup_yo'); } catch (e) { YO = null; }
+  if (!YO) { app.innerHTML = `<div class="card"><div class="alert bad">Tu cuenta no tiene un perfil activo del equipo.</div><button class="btn" id="bS">Salir</button></div>`; $('#bS').onclick = salir; return; }
+  $('#quien').textContent = YO.nombre + ' · ' + (YO.admin ? 'Administrador' : YO.gerencia ? 'Gerencia' : 'Visitador médico');
+  $('#btnSalir').classList.remove('hidden');
+  tab = tab || (YO.admin ? 'resumen' : 'emitir');
+  shell();
+}
+function login() {
+  $('#btnSalir').classList.add('hidden'); $('#quien').textContent = '';
+  app.innerHTML = `<form class="card" id="fL" style="max-width:420px;margin:30px auto">
+    <h2>Ingreso del equipo</h2><p class="small muted">Usa la misma cuenta de la app de gastos.</p>
+    <label for="em">Correo</label><input id="em" type="email" required autocomplete="username">
+    <label for="pw">Contraseña</label><input id="pw" type="password" required autocomplete="current-password">
+    <div id="eL"></div><button class="btn block" style="margin-top:14px" id="bL">Ingresar</button></form>`;
+  $('#fL').onsubmit = async e => {
+    e.preventDefault(); $('#bL').disabled = true;
+    const { error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
+    if (error) { $('#eL').innerHTML = `<div class="alert bad">Correo o contraseña incorrectos.</div>`; $('#bL').disabled = false; return; }
+    arrancar();
+  };
+}
+async function salir() { await sb.auth.signOut(); YO = null; tab = null; login(); }
+$('#btnSalir').onclick = salir;
+
+function shell() {
+  const tabs = [['emitir', 'Emitir cupón'], ['tarjetas', 'Tarjetas QR'], ['cupones', 'Cupones emitidos'], ['campanas', 'Campañas']];
+  if (YO.gerencia) tabs.unshift(['resumen', 'Resumen']);
+  if (YO.gerencia || YO.rol === 'controller') tabs.push(['canjes', 'Canjes y reembolsos']);
+  if (YO.admin) tabs.push(['plantillas', 'Plantillas'], ['sucursales', 'Sucursales']);
+  app.innerHTML = `<div class="ntabs">${tabs.map(t => `<button data-t="${t[0]}" class="${tab === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div><div id="cont"></div>`;
+  app.querySelectorAll('.ntabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; shell(); });
+  ({ resumen, emitir, tarjetas, cupones, campanas, canjes, plantillas, sucursales })[tab]();
+}
+
+// ---------- Selector de médico (panel del VM) ----------
+async function selectorMedico(cont, onPick) {
+  cont.innerHTML = `<label>Médico ${YO.admin ? '' : '(de tu panel)'}</label>
+    <input id="busMed" placeholder="Buscar por nombre o ciudad…" autocomplete="off"><div class="lista-med" id="lisMed"><div class="muted">Cargando…</div></div>`;
+  let todos = [];
+  try { todos = await rpc('cup_mi_panel', { p_buscar: null }); } catch (e) { cont.querySelector('#lisMed').innerHTML = err(e); return; }
+  const pintar = q => {
+    const f = q ? todos.filter(m => (m.nombre + ' ' + (m.ciudad || '')).toLowerCase().includes(q.toLowerCase())) : todos;
+    cont.querySelector('#lisMed').innerHTML = f.slice(0, 120).map(m => `<div data-id="${m.id}">${C.esc(titulo(m.nombre))} <span class="muted small">· ${C.esc(m.ciudad || '')} ${m.especialidad ? '· ' + C.esc(m.especialidad) : ''}${YO.admin ? ' · ' + C.esc(m.mr || '') : ''}</span>${m.tarjeta ? ' <span class="chip">QR ' + C.esc(m.tarjeta) + '</span>' : ''}</div>`).join('') || '<div class="muted">Sin resultados</div>';
+    cont.querySelectorAll('#lisMed div[data-id]').forEach(d => d.onclick = () => {
+      cont.querySelectorAll('#lisMed div').forEach(x => x.classList.remove('on')); d.classList.add('on');
+      onPick(todos.find(m => m.id == d.dataset.id));
+    });
+  };
+  cont.querySelector('#busMed').oninput = e => pintar(e.target.value);
+  pintar('');
+}
+
+// ---------- Emitir ----------
+async function emitir() {
+  const cont = $('#cont');
+  cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
+  let pls = [];
+  try { pls = await rpc('cup_plantillas_vm'); } catch (e) { cont.innerHTML = err(e); return; }
+  const st = { pl: null, med: null, modo: 'madre' };
+  cont.innerHTML = `<div class="grid2">
+    <div class="card"><h2>1. Elige la plantilla</h2><p class="small muted">Solo puedes emitir desde los modelos aprobados.</p><div id="pls"></div></div>
+    <div class="card"><h2>2. Médico</h2><div id="selMed"></div></div></div>
+    <div class="card"><h2>3. ¿A quién?</h2>
+      <div class="seg"><button data-m="madre" class="on">A una madre</button><button data-m="campana">Campaña para pacientes del médico</button></div>
+      <div id="frm"></div><div id="eEm"></div>
+      <button class="btn orange" id="bEm" style="margin-top:12px">Emitir</button></div>`;
+  $('#pls').innerHTML = pls.length ? pls.map(p => {
+    const rest = p.tope_vm_mes == null ? null : Math.max(p.tope_vm_mes - p.usado_mes, 0);
+    return `<div class="plant ${rest === 0 && !YO.admin ? 'agot' : ''}" data-id="${p.id}">
+      <b>${C.esc(p.nombre)}</b> <span class="chip">${C.esc(p.beneficio || '')}</span>
+      <div class="small muted">${C.esc(p.producto || '')} · ${p.tipo === 'unico' ? 'uso único' : p.tipo === 'cantidad' ? p.usos_por_madre + ' usos por madre' : 'ilimitado hasta la fecha'} · ${p.vigencia_dias ? 'vence a los ' + p.vigencia_dias + ' días' : p.fecha_fin ? 'hasta ' + C.fecha(p.fecha_fin) : ''}</div>
+      <div class="small">${rest == null ? 'Sin tope mensual' : `Te quedan <b>${rest}</b> de ${p.tope_vm_mes} este mes`}</div></div>`;
+  }).join('') : '<div class="muted">No hay plantillas activas.</div>';
+  $('#pls').querySelectorAll('.plant:not(.agot)').forEach(d => d.onclick = () => {
+    $('#pls').querySelectorAll('.plant').forEach(x => x.classList.remove('on')); d.classList.add('on'); st.pl = pls.find(p => p.id === d.dataset.id);
+  });
+  selectorMedico($('#selMed'), m => st.med = m);
+  const frm = () => {
+    $('#frm').innerHTML = st.modo === 'madre' ? `
+      <div class="row"><div><label>Celular de la madre</label><input id="mCel" inputmode="tel" placeholder="9999-9999"></div>
+      <div><label>Nombre de la madre</label><input id="mNom" placeholder="Solo si es nueva"></div></div>
+      <div class="row"><div><label>Nombre del bebé</label><input id="mBebe"></div><div><label>Fecha de nacimiento del bebé</label><input id="mNac" type="date"></div></div>
+      <label class="check"><input type="checkbox" id="mCons"><span>La madre autorizó el uso de sus datos y el contacto del Club Nutribén.</span></label>
+      <p class="small muted">Si la madre ya está registrada basta el celular. Al emitir, envíale el enlace por WhatsApp.</p>` : `
+      <p class="small">Las madres que se registren con la tarjeta QR de este médico reciben el cupón automáticamente, hasta agotar el cupo.</p>
+      <div class="row"><div><label>Cupo (madres)</label><input id="cCupo" type="number" min="1" max="500" value="10"></div>
+      <div><label>Vigente hasta (opcional)</label><input id="cHasta" type="date"></div></div>
+      <p class="small muted">El cupo se descuenta de tu tope mensual al crear la campaña. Si la cierras, se libera lo no usado.</p>`;
+  };
+  cont.querySelectorAll('.seg button').forEach(b => b.onclick = () => { cont.querySelectorAll('.seg button').forEach(x => x.classList.remove('on')); b.classList.add('on'); st.modo = b.dataset.m; frm(); });
+  frm();
+  $('#bEm').onclick = async () => {
+    $('#eEm').innerHTML = '';
+    if (!st.pl) return $('#eEm').innerHTML = '<div class="alert warn">Elige una plantilla.</div>';
+    if (!st.med) return $('#eEm').innerHTML = '<div class="alert warn">Elige el médico.</div>';
+    const b = $('#bEm'); b.disabled = true;
+    try {
+      if (st.modo === 'madre') {
+        const r = await rpc('cup_emitir', { p_plantilla: st.pl.id, p_medico: st.med.id, p_celular: $('#mCel').value, p_nombre: $('#mNom').value,
+          p_bebe_nombre: $('#mBebe').value, p_bebe_nac: $('#mNac').value || null, p_consent: $('#mCons').checked });
+        const txt = `¡Hola! Tu pediatra Dr(a). ${titulo(st.med.nombre)} te regala un cupón Nutribén: ${st.pl.nombre}. Entra al Club Nutribén para verlo: ${URL_MADRE}` +
+          (r.madre_nueva ? ' (entra con "Ya estoy registrada", tu celular y la fecha de nacimiento de tu bebé).' : '');
+        modal(`<h2>Cupón emitido</h2><div class="code-big">${C.esc(r.codigo)}</div>
+          <p class="small">La madre lo verá en su app${r.madre_nueva ? ' (quedó registrada con los datos que ingresaste)' : ''}.</p>
+          <a class="btn block" style="background:#25D366;color:#073" target="_blank" rel="noopener" href="https://wa.me/${r.celular}?text=${encodeURIComponent(txt)}">Enviar por WhatsApp</a>
+          <button class="btn ghost block" style="margin-top:8px" onclick="cerrarModal()">Cerrar</button>`);
+        emitir();
+      } else {
+        const r = await rpc('cup_crear_campana', { p_plantilla: st.pl.id, p_medico: st.med.id, p_cupo: +$('#cCupo').value, p_hasta: $('#cHasta').value || null });
+        modal(`<h2>Campaña creada</h2><p>Las madres que se registren con la tarjeta <b>${C.esc(r.tarjeta)}</b> de Dr(a). ${C.esc(titulo(r.medico))} recibirán <b>${C.esc(st.pl.nombre)}</b>.</p>
+          <p class="small muted">Si el médico aún no tiene tarjetas impresas, imprímelas en "Tarjetas QR".</p><button class="btn block" onclick="cerrarModal()">Listo</button>`);
+        emitir();
+      }
+    } catch (e) { $('#eEm').innerHTML = err(e); b.disabled = false; }
+  };
+}
+
+// ---------- Tarjetas QR ----------
+function tarjetas() {
+  const cont = $('#cont');
+  cont.innerHTML = `<div class="grid2 noprint">
+    <div class="card"><h2>Tarjeta "Comienzo saludable" por médico</h2>
+      <p class="small muted">Cada médico tiene un QR único: las madres que lo escanean quedan registradas con ese médico. Imprime en cartulina, 9 × 5 cm.</p>
+      <div id="selMed"></div></div>
+    <div class="card"><h2>Vista previa</h2><div id="prev" class="muted">Elige un médico.</div>
+      <div class="row noprint" style="margin-top:12px"><div><label>Cantidad a imprimir</label><input id="cant" type="number" min="1" max="40" value="10"></div></div>
+      <button class="btn" id="bImp" style="margin-top:12px" disabled>Imprimir tarjetas</button></div></div>
+    <div id="hoja" class="tarjetas"></div>`;
+  let tar = null;
+  const tfis = (t, i) => `<div class="tfis"><div class="izq"><b>Comienzo<br>saludable</b><small>Tu pediatra Dr(a). ${C.esc(titulo(t.medico))} te recomienda el Club Nutribén</small></div>
+    <div class="der">Escanea para ingresar al formulario de registro<div class="q" id="q${i}"></div>WhatsApp ${C.esc(C.WHATSAPP_TXT)}</div></div>`;
+  selectorMedico($('#selMed'), async m => {
+    $('#prev').innerHTML = '<span class="spinner"></span>';
+    try {
+      tar = await rpc('cup_tarjeta_medico', { p_medico: m.id });
+      const url = URL_MADRE + '?t=' + tar.codigo;
+      $('#prev').innerHTML = tfis(tar, 'p') + `<p class="small muted" style="word-break:break-all">${C.esc(url)}</p>`;
+      qr($('#qp'), url, 120); $('#bImp').disabled = false;
+    } catch (e) { $('#prev').innerHTML = err(e); }
+  });
+  $('#bImp').onclick = () => {
+    const n = Math.min(Math.max(+$('#cant').value || 1, 1), 40), url = URL_MADRE + '?t=' + tar.codigo;
+    $('#hoja').innerHTML = Array.from({ length: n }, (_, i) => tfis(tar, i)).join('');
+    for (let i = 0; i < n; i++) qr($('#q' + i), url, 120);
+    setTimeout(() => window.print(), 400);
+  };
+}
+
+// ---------- Cupones emitidos ----------
+async function cupones() {
+  const cont = $('#cont'); cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
+  let rows = [];
+  try { rows = await rpc('cup_mis_emisiones'); } catch (e) { cont.innerHTML = err(e); return; }
+  const chip = s => ({ disponible: 'ok', canjeado: 'gray', vencido: 'bad' }[s] || 'warn');
+  cont.innerHTML = `<div class="card"><div class="row" style="align-items:end"><div><h2 style="margin:0">${rows.length} cupones</h2><p class="small muted" style="margin:0">Los emitidos por ti y los de madres registradas con tus tarjetas.</p></div>
+    <div style="flex:0 0 auto"><button class="btn sm ghost" id="bCsv">Descargar CSV</button></div></div>
+    <div class="tscroll" style="margin-top:10px"><table><tr><th>Fecha</th><th>Código</th><th>Cupón</th><th>Médico</th><th>Madre</th>${YO.gerencia ? '<th>VM</th>' : ''}<th>Origen</th><th>Estado</th><th></th></tr>
+    ${rows.map(r => `<tr><td>${C.fecha(r.emitido_at)}</td><td>${C.esc(r.codigo)}</td><td>${C.esc(r.cupon)}</td><td>${C.esc(titulo(r.medico || ''))}</td>
+      <td>${C.esc(r.madre)}<div class="small muted">${C.esc(r.celular)}</div></td>${YO.gerencia ? `<td>${C.esc(r.vm || '')}</td>` : ''}<td>${C.esc(r.origen)}</td>
+      <td><span class="chip ${chip(r.estado)}">${C.esc(r.estado)}</span>${r.usos_max ? `<div class="small muted">${r.usos}/${r.usos_max}</div>` : ''}</td>
+      <td>${r.usos === 0 && r.estado !== 'vencido' ? `<button class="btn sm danger" data-an="${r.id}">Anular</button>` : ''}</td></tr>`).join('')}
+    </table></div></div>`;
+  $('#bCsv').onclick = () => csv('cupones_emitidos.csv', rows);
+  cont.querySelectorAll('[data-an]').forEach(b => b.onclick = async () => {
+    if (!confirm('¿Anular este cupón? La madre dejará de verlo.')) return;
+    try { await rpc('cup_anular', { p_asig: b.dataset.an }); cupones(); } catch (e) { alert(C.msg(e)); }
+  });
+}
+
+// ---------- Campañas ----------
+async function campanas() {
+  const cont = $('#cont'); cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
+  let rows = [];
+  try { rows = await rpc('cup_mis_campanas'); } catch (e) { cont.innerHTML = err(e); return; }
+  cont.innerHTML = `<div class="card"><h2>Campañas por médico</h2><div class="tscroll"><table>
+    <tr><th>Creada</th><th>Cupón</th><th>Médico</th><th>Tarjeta</th>${YO.gerencia ? '<th>VM</th>' : ''}<th>Usado</th><th>Hasta</th><th>Estado</th><th></th></tr>
+    ${rows.map(r => `<tr><td>${C.fecha(r.creada)}</td><td>${C.esc(r.cupon)}</td><td>${C.esc(titulo(r.medico))}</td><td>${C.esc(r.tarjeta)}</td>${YO.gerencia ? `<td>${C.esc(r.vm || '')}</td>` : ''}
+      <td>${r.emitidos} / ${r.cupo}</td><td>${r.hasta ? C.fecha(r.hasta) : '—'}</td><td>${r.activa ? '<span class="chip ok">Activa</span>' : '<span class="chip gray">Cerrada</span>'}</td>
+      <td>${r.activa ? `<button class="btn sm ghost" data-c="${r.id}">Cerrar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">Sin campañas.</td></tr>'}
+    </table></div></div>`;
+  cont.querySelectorAll('[data-c]').forEach(b => b.onclick = async () => {
+    if (!confirm('¿Cerrar la campaña? El cupo no usado vuelve a tu tope del mes.')) return;
+    try { await rpc('cup_cerrar_campana', { p_id: b.dataset.c }); campanas(); } catch (e) { alert(C.msg(e)); }
+  });
+}
+
+// ---------- Resumen (gerencia) ----------
+async function resumen() {
+  const cont = $('#cont');
+  const d1 = new Date(); d1.setDate(1);
+  cont.innerHTML = `<div class="card"><div class="row" style="align-items:end">
+    <div><label style="margin-top:0">Desde</label><input type="date" id="rD" value="${d1.toISOString().slice(0, 10)}"></div>
+    <div><label style="margin-top:0">Hasta</label><input type="date" id="rH" value="${new Date().toISOString().slice(0, 10)}"></div>
+    <div style="flex:0 0 auto"><button class="btn" id="rV">Ver</button></div></div>
+    <p class="small muted" style="margin:8px 0 0">No incluye registros marcados como prueba.</p></div><div id="rC"></div>`;
+  const ver = async () => {
+    $('#rC').innerHTML = '<div class="card"><span class="spinner"></span></div>';
+    try {
+      const d = await rpc('cup_dashboard', { p_desde: $('#rD').value, p_hasta: $('#rH').value });
+      const tabla = (t, cols, rows) => `<div class="card"><h3>${t}</h3><div class="tscroll"><table><tr>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>
+        ${rows.map(r => `<tr>${cols.map(c => `<td>${C.esc(c[0] === 'medico' ? titulo(r[c[0]]) : r[c[0]])}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="muted">Sin datos</td></tr>`}</table></div></div>`;
+      $('#rC').innerHTML = `<div class="kpis">
+        <div class="kpi"><b>${d.madres}</b><span>Madres registradas</span></div>
+        <div class="kpi"><b>${d.emitidos}</b><span>Cupones emitidos</span></div>
+        <div class="kpi"><b>${d.canjes}</b><span>Canjes</span></div>
+        <div class="kpi"><b>${d.emitidos ? Math.round(d.canjes / d.emitidos * 100) : 0} %</b><span>Canjes / emitidos</span></div>
+        <div class="kpi"><b>${d.reembolso_pendiente}</b><span>Reembolsos pendientes</span></div></div>
+        <div class="grid2">${tabla('Por visitador', [['vm', 'VM'], ['emitidos', 'Emitidos'], ['canjes', 'Canjes']], d.por_vm)}
+        ${tabla('Por plantilla', [['nombre', 'Plantilla'], ['emitidos', 'Emitidos'], ['canjes', 'Canjes']], d.por_plantilla)}
+        ${tabla('Médicos (madres registradas con su QR)', [['medico', 'Médico'], ['madres', 'Madres'], ['canjes', 'Canjes']], d.por_medico)}
+        ${tabla('Canjes por cadena', [['cadena', 'Cadena'], ['canjes', 'Canjes']], d.por_cadena)}</div>`;
+    } catch (e) { $('#rC').innerHTML = err(e); }
+  };
+  $('#rV').onclick = ver; ver();
+}
+
+// ---------- Canjes y reembolsos ----------
+async function canjes() {
+  const cont = $('#cont');
+  const d30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const puede = ['gerente_general', 'controller'].includes(YO.rol);
+  cont.innerHTML = `<div class="card"><div class="row" style="align-items:end">
+    <div><label style="margin-top:0">Desde</label><input type="date" id="kD" value="${d30}"></div>
+    <div><label style="margin-top:0">Hasta</label><input type="date" id="kH" value="${new Date().toISOString().slice(0, 10)}"></div>
+    <div style="flex:0 0 auto"><button class="btn" id="kV">Ver</button></div></div></div><div id="kC"></div>`;
+  const ver = async () => {
+    $('#kC').innerHTML = '<div class="card"><span class="spinner"></span></div>';
+    try {
+      const rows = await rpc('cup_reporte_canjes', { p_desde: $('#kD').value, p_hasta: $('#kH').value });
+      $('#kC').innerHTML = `<div class="card"><div class="row" style="align-items:center"><h3 style="margin:0">${rows.length} canjes</h3>
+        <div style="flex:0 0 auto" class="row">${puede ? '<button class="btn sm" id="kR">Marcar seleccionados como reembolsados</button>' : ''}<button class="btn sm ghost" id="kCsv">CSV</button></div></div>
+        <div class="tscroll" style="margin-top:10px"><table><tr>${puede ? '<th><input type="checkbox" id="kAll"></th>' : ''}<th>Fecha</th><th>Cadena / sucursal</th><th>Código</th><th>Cupón</th><th>Beneficio</th><th>Factura</th><th>Médico</th><th>VM</th><th>Reembolso</th></tr>
+        ${rows.map(r => `<tr>${puede ? `<td><input type="checkbox" data-k="${r.id}"></td>` : ''}<td>${C.fechaHora(r.fecha)}</td><td>${C.esc(r.cadena)}<div class="small muted">${C.esc(r.sucursal)}</div></td>
+          <td>${C.esc(r.codigo)}${r.es_prueba ? ' <span class="chip warn">prueba</span>' : ''}</td><td>${C.esc(r.cupon)}</td><td>${C.esc(r.beneficio || '')}</td><td>${C.esc(r.factura || '')}</td>
+          <td>${C.esc(titulo(r.medico || ''))}</td><td>${C.esc(r.vm || '')}</td><td><span class="chip ${r.reembolso_estado === 'reembolsado' ? 'ok' : r.reembolso_estado === 'rechazado' ? 'bad' : 'warn'}">${r.reembolso_estado}</span></td></tr>`).join('')}
+        </table></div></div>`;
+      $('#kCsv').onclick = () => csv('canjes.csv', rows);
+      if (puede) {
+        $('#kAll').onchange = e => $('#kC').querySelectorAll('[data-k]').forEach(c => c.checked = e.target.checked);
+        $('#kR').onclick = async () => {
+          const ids = [...$('#kC').querySelectorAll('[data-k]:checked')].map(c => c.dataset.k);
+          if (!ids.length) return;
+          try { await rpc('cup_marcar_reembolso', { p_canjes: ids, p_estado: 'reembolsado' }); ver(); } catch (e) { alert(C.msg(e)); }
+        };
+      }
+    } catch (e) { $('#kC').innerHTML = err(e); }
+  };
+  $('#kV').onclick = ver; ver();
+}
+
+// ---------- Plantillas (admin) ----------
+async function plantillas() {
+  const cont = $('#cont'); cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
+  const [{ data: pls, error: e1 }, { data: prods }] = await Promise.all([
+    sb.from('cup_plantillas').select('*').order('created_at'), sb.from('cup_productos').select('*').eq('activo', true).order('nombre')]);
+  if (e1) { cont.innerHTML = err(e1); return; }
+  const prodN = id => (prods.find(p => p.id === id) || {}).nombre || '—';
+  cont.innerHTML = `<div class="card"><div class="row" style="align-items:center"><div><h2 style="margin:0">Plantillas de cupón</h2>
+    <p class="small muted" style="margin:0">Los VM solo emiten desde plantillas activas de canal "VM". Las de canal "Bienvenida" se asignan solas al registrarse.</p></div>
+    <div style="flex:0 0 auto"><button class="btn" id="pN">Nueva plantilla</button></div></div>
+    <div class="tscroll" style="margin-top:10px"><table><tr><th>Nombre</th><th>Beneficio</th><th>Producto</th><th>Tipo</th><th>Vigencia</th><th>Tope VM/mes</th><th>Canal</th><th>Estado</th><th></th></tr>
+    ${pls.map(p => `<tr><td><b>${C.esc(p.nombre)}</b></td><td>${C.esc(p.beneficio || '')}</td><td>${C.esc(prodN(p.producto_id))}</td>
+      <td>${p.tipo === 'unico' ? 'Único' : p.tipo === 'cantidad' ? p.usos_por_madre + ' usos' : 'Hasta fecha'}</td>
+      <td>${p.vigencia_dias ? p.vigencia_dias + ' días' : ''}${p.fecha_fin ? ' (máx. ' + C.fecha(p.fecha_fin) + ')' : ''}</td>
+      <td>${p.tope_vm_mes ?? 'Sin tope'}</td><td>${p.canal === 'vm' ? 'VM' : 'Bienvenida'}</td>
+      <td>${p.activa && !(p.fecha_fin && p.fecha_fin < new Date().toISOString().slice(0, 10)) ? '<span class="chip ok">Activa</span>' : p.activa ? '<span class="chip bad">Vencida</span>' : '<span class="chip gray">Inactiva</span>'}</td>
+      <td><button class="btn sm ghost" data-e="${p.id}">Editar</button></td></tr>`).join('')}</table></div></div>`;
+  const editor = p => {
+    p = p || { tipo: 'unico', usos_por_madre: 1, canal: 'vm', activa: true, pais: 'Honduras', vigencia_dias: 30 };
+    modal(`<h2>${p.id ? 'Editar' : 'Nueva'} plantilla</h2>
+      <label>Nombre</label><input id="xN" value="${C.esc(p.nombre || '')}">
+      <label>Beneficio (corto, se ve en el cupón)</label><input id="xB" value="${C.esc(p.beneficio || '')}" placeholder="10 %, L. 100, 2+1">
+      <label>Descripción</label><textarea id="xD" rows="2">${C.esc(p.descripcion || '')}</textarea>
+      <label>Términos y condiciones</label><textarea id="xT" rows="4">${C.esc(p.terminos || '')}</textarea>
+      <label>Producto</label><select id="xP"><option value="">Varios / según términos</option>${prods.map(o => `<option value="${o.id}" ${o.id === p.producto_id ? 'selected' : ''}>${C.esc(o.nombre)}</option>`).join('')}</select>
+      <div class="row"><div><label>Tipo</label><select id="xTi"><option value="unico">Único (1 uso)</option><option value="cantidad">Cantidad límite</option><option value="fecha">Fecha límite (ilimitado)</option></select></div>
+      <div><label>Usos por madre</label><input id="xU" type="number" min="1" max="50" value="${p.usos_por_madre || 1}"></div></div>
+      <div class="row"><div><label>Vence a los (días)</label><input id="xV" type="number" min="1" max="730" value="${p.vigencia_dias ?? ''}"></div>
+      <div><label>Fecha final</label><input id="xF" type="date" value="${p.fecha_fin || ''}"></div></div>
+      <div class="row"><div><label>Tope por VM al mes</label><input id="xTo" type="number" min="0" value="${p.tope_vm_mes ?? ''}" placeholder="Sin tope"></div>
+      <div><label>Tope total</label><input id="xTT" type="number" min="0" value="${p.tope_total ?? ''}" placeholder="Sin tope"></div></div>
+      <div class="row"><div><label>Canal</label><select id="xC"><option value="vm">VM (lo emite el visitador)</option><option value="bienvenida">Bienvenida (automático al registrarse)</option></select></div>
+      <div><label>País</label><select id="xPa"><option>Honduras</option><option>El Salvador</option><option>Nicaragua</option><option>Costa Rica</option></select></div></div>
+      <label>URL de imagen (opcional)</label><input id="xI" value="${C.esc(p.imagen_url || '')}">
+      <label class="check"><input type="checkbox" id="xA" ${p.activa ? 'checked' : ''}><span>Activa</span></label>
+      <div id="xE"></div><div class="row"><button class="btn" id="xG">Guardar</button><button class="btn ghost" onclick="cerrarModal()">Cancelar</button></div>`);
+    $('#xTi').value = p.tipo; $('#xC').value = p.canal; $('#xPa').value = p.pais;
+    $('#xG').onclick = async () => {
+      const num = id => $(id).value === '' ? null : +$(id).value;
+      const tipo = $('#xTi').value;
+      const reg = { nombre: $('#xN').value.trim(), beneficio: $('#xB').value.trim(), descripcion: $('#xD').value.trim(), terminos: $('#xT').value.trim(),
+        producto_id: $('#xP').value ? +$('#xP').value : null, tipo, usos_por_madre: tipo === 'cantidad' ? (num('#xU') || 1) : 1,
+        vigencia_dias: num('#xV'), fecha_fin: $('#xF').value || null, tope_vm_mes: num('#xTo'), tope_total: num('#xTT'),
+        canal: $('#xC').value, pais: $('#xPa').value, imagen_url: $('#xI').value.trim() || null, activa: $('#xA').checked };
+      if (!reg.nombre) return $('#xE').innerHTML = '<div class="alert warn">Falta el nombre.</div>';
+      if (!reg.vigencia_dias && !reg.fecha_fin) return $('#xE').innerHTML = '<div class="alert warn">Define días de vigencia o una fecha final.</div>';
+      const q = p.id ? sb.from('cup_plantillas').update(reg).eq('id', p.id) : sb.from('cup_plantillas').insert({ ...reg, created_by: YO.id });
+      const { error } = await q;
+      if (error) return $('#xE').innerHTML = err(error);
+      cerrarModal(); plantillas();
+    };
+  };
+  $('#pN').onclick = () => editor();
+  cont.querySelectorAll('[data-e]').forEach(b => b.onclick = () => editor(pls.find(p => p.id === b.dataset.e)));
+}
+
+// ---------- Sucursales (admin) ----------
+async function sucursales() {
+  const cont = $('#cont'); cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
+  const { data: rows, error } = await sb.from('cup_sucursales').select('id,cadena,nombre,ciudad,pais,codigo,activa,es_prueba,tiene_pin').order('cadena').order('codigo');
+  if (error) { cont.innerHTML = err(error); return; }
+  const cadenas = [...new Set(rows.map(r => r.cadena))];
+  cont.innerHTML = `<div class="card"><div class="row" style="align-items:end">
+      <div><h2 style="margin:0">${rows.length} sucursales</h2><p class="small muted" style="margin:0">Cada sucursal entra a <a href="${URL_FARM}" target="_blank">la vista de farmacia</a> con su código y PIN.</p></div>
+      <div><label style="margin-top:0">Cadena</label><select id="sF"><option value="">Todas</option>${cadenas.map(c => `<option>${C.esc(c)}</option>`).join('')}</select></div>
+      <div><label style="margin-top:0">Buscar</label><input id="sB" placeholder="Nombre, ciudad o código"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="sN">Agregar sucursal</button></div></div>
+    <div class="tscroll" style="margin-top:10px"><table id="sT"></table></div></div>`;
+  const pintar = () => {
+    const f = $('#sF').value, q = $('#sB').value.toLowerCase();
+    const v = rows.filter(r => (!f || r.cadena === f) && (!q || (r.nombre + r.ciudad + r.codigo).toLowerCase().includes(q)));
+    $('#sT').innerHTML = `<tr><th>Código</th><th>Cadena</th><th>Sucursal</th><th>Ciudad</th><th>PIN</th><th>Estado</th><th></th></tr>` +
+      v.map(r => `<tr><td><b>${C.esc(r.codigo)}</b></td><td>${C.esc(r.cadena)}</td><td>${C.esc(r.nombre)}</td><td>${C.esc(r.ciudad || '')}</td>
+      <td>${r.tiene_pin ? '<span class="chip ok">Asignado</span>' : '<span class="chip warn">Sin PIN</span>'}</td>
+      <td>${r.activa ? '<span class="chip ok">Activa</span>' : '<span class="chip gray">Inactiva</span>'}${r.es_prueba ? ' <span class="chip warn">prueba</span>' : ''}</td>
+      <td style="white-space:nowrap"><button class="btn sm ghost" data-p="${r.id}">${r.tiene_pin ? 'Cambiar PIN' : 'Asignar PIN'}</button>
+      <button class="btn sm light" data-a="${r.id}">${r.activa ? 'Desactivar' : 'Activar'}</button></td></tr>`).join('');
+    $('#sT').querySelectorAll('[data-p]').forEach(b => b.onclick = async () => {
+      const r = rows.find(x => x.id === b.dataset.p);
+      const pin = String(Math.floor(1000 + Math.random() * 9000));
+      try {
+        await rpc('cup_set_pin', { p_sucursal: r.id, p_pin: pin });
+        r.tiene_pin = true; pintar();
+        modal(`<h2>PIN de ${C.esc(r.nombre)}</h2><p>Entrégalo a la sucursal. No se vuelve a mostrar.</p>
+          <table><tr><th>Enlace</th><td style="word-break:break-all">${C.esc(URL_FARM)}</td></tr><tr><th>Código</th><td><b>${C.esc(r.codigo)}</b></td></tr><tr><th>PIN</th><td><b style="font-size:1.4rem">${pin}</b></td></tr></table>
+          <button class="btn block" style="margin-top:12px" onclick="cerrarModal()">Listo</button>`);
+      } catch (e) { alert(C.msg(e)); }
+    });
+    $('#sT').querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
+      const r = rows.find(x => x.id === b.dataset.a);
+      const { error } = await sb.from('cup_sucursales').update({ activa: !r.activa }).eq('id', r.id);
+      if (error) return alert(C.msg(error));
+      r.activa = !r.activa; pintar();
+    });
+  };
+  $('#sF').onchange = pintar; $('#sB').oninput = pintar; pintar();
+  $('#sN').onclick = () => {
+    modal(`<h2>Agregar sucursal</h2>
+      <label>Cadena</label><input id="nC" list="lc"><datalist id="lc">${cadenas.concat(['Farmacias Kielsa']).map(c => `<option>${C.esc(c)}</option>`).join('')}</datalist>
+      <label>Nombre de la sucursal</label><input id="nN">
+      <div class="row"><div><label>Ciudad</label><input id="nCi"></div><div><label>País</label><select id="nP"><option>Honduras</option><option>El Salvador</option><option>Nicaragua</option><option>Costa Rica</option></select></div></div>
+      <label>Código de ingreso (único, p. ej. KI015)</label><input id="nCo" maxlength="12" style="text-transform:uppercase">
+      <label>Dirección</label><input id="nD">
+      <div id="nE"></div><div class="row" style="margin-top:12px"><button class="btn" id="nG">Guardar</button><button class="btn ghost" onclick="cerrarModal()">Cancelar</button></div>`);
+    $('#nG').onclick = async () => {
+      const reg = { cadena: $('#nC').value.trim(), nombre: $('#nN').value.trim(), ciudad: $('#nCi').value.trim(), pais: $('#nP').value,
+        codigo: $('#nCo').value.trim().toUpperCase(), direccion: $('#nD').value.trim() };
+      if (!reg.cadena || !reg.nombre || !reg.codigo) return $('#nE').innerHTML = '<div class="alert warn">Cadena, nombre y código son obligatorios.</div>';
+      const { error } = await sb.from('cup_sucursales').insert(reg);
+      if (error) return $('#nE').innerHTML = err(error.code === '23505' ? { message: 'Ese código ya existe.' } : error);
+      cerrarModal(); sucursales();
+    };
+  };
+}
+
+window.cerrarModal = cerrarModal;
+arrancar();
+</script>
+</body>
+</html>

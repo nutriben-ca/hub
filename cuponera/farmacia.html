@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nutribén — Vista de farmacia</title>
+<meta name="theme-color" content="#0033A1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div><div class="brand">Nutribén<sup>®</sup></div><div class="small muted" id="sucNombre">Vista de farmacia</div></div>
+  <button id="btnSalir" class="btn sm light hidden noprint" type="button">Cerrar sesión</button>
+</div></header>
+
+<main class="wrap" id="app"></main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const C = window.CUP;
+const sb = supabase.createClient(C.SUPABASE_URL, C.SUPABASE_KEY, { auth: { persistSession: false } });
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const TK = 'cup_farm_token', TS = 'cup_farm_suc';
+let tab = 'canjear';
+
+async function rpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw error;
+  return data;
+}
+function sesionVencida(err) {
+  if (String(err && err.message || '').includes('SESION_INVALIDA')) { C.ls.del(TK); C.ls.del(TS); login('Tu sesión venció. Vuelve a ingresar.'); return true; }
+  return false;
+}
+
+function login(aviso) {
+  $('#btnSalir').classList.add('hidden');
+  $('#sucNombre').textContent = 'Vista de farmacia';
+  app.innerHTML = `
+    <form class="card" id="fLog" style="margin-top:20px">
+      <h2>Ingreso de sucursal</h2>
+      <p class="small muted">Usa el código de tu sucursal (por ejemplo FA02) y el PIN que te entregó Nutribén.</p>
+      ${aviso ? `<div class="alert warn">${C.esc(aviso)}</div>` : ''}
+      <label for="cod">Código de sucursal</label>
+      <input id="cod" required autocapitalize="characters" autocomplete="username" maxlength="12">
+      <label for="pin">PIN</label>
+      <input id="pin" required type="password" inputmode="numeric" autocomplete="current-password" maxlength="8">
+      <div id="eLog"></div>
+      <button class="btn block" id="bLog" type="submit">Ingresar</button>
+    </form>`;
+  $('#fLog').onsubmit = async e => {
+    e.preventDefault();
+    const b = $('#bLog'); b.disabled = true;
+    try {
+      const r = await rpc('cup_farm_login', { p_codigo: $('#cod').value, p_pin: $('#pin').value });
+      C.ls.set(TK, r.token); C.ls.set(TS, JSON.stringify(r));
+      principal();
+    } catch (err) { $('#eLog').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`; b.disabled = false; }
+  };
+}
+
+function principal() {
+  let s = {}; try { s = JSON.parse(C.ls.get(TS) || '{}'); } catch (e) {}
+  $('#sucNombre').textContent = (s.cadena ? s.cadena + ' · ' : '') + (s.sucursal || '');
+  $('#btnSalir').classList.remove('hidden');
+  app.innerHTML = `
+    <div class="ntabs noprint">
+      <button data-t="canjear" class="${tab === 'canjear' ? 'on' : ''}">Canjear</button>
+      <button data-t="reporte" class="${tab === 'reporte' ? 'on' : ''}">Reporte</button>
+    </div>
+    <div id="cont"></div>`;
+  app.querySelectorAll('.ntabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; principal(); });
+  tab === 'canjear' ? vistaCanjear() : vistaReporte();
+}
+
+function vistaCanjear() {
+  $('#cont').innerHTML = `
+    <form class="card" id="fCons">
+      <label for="codigo" style="margin-top:0">Código de canje de la clienta</label>
+      <input id="codigo" required autocapitalize="characters" autocomplete="off" placeholder="NB XXXX XX" style="font-size:1.4rem;letter-spacing:3px;font-weight:700;text-transform:uppercase">
+      <button class="btn block" style="margin-top:12px" id="bCons" type="submit">Consultar cupón</button>
+    </form>
+    <div id="res"></div>`;
+  $('#codigo').focus();
+  $('#fCons').onsubmit = async e => { e.preventDefault(); consultar($('#codigo').value); };
+}
+
+async function consultar(codigo) {
+  const res = $('#res');
+  res.innerHTML = '<div class="card"><span class="spinner"></span> Consultando…</div>';
+  try {
+    const r = await rpc('cup_farm_consultar', { p_token: C.ls.get(TK), p_codigo: codigo });
+    if (r.estado === 'no_existe') { res.innerHTML = `<div class="alert bad">${C.ERRORES.CODIGO_NO_EXISTE}</div>`; return; }
+    const etiqueta = { disponible: ['ok', 'VÁLIDO — se puede canjear'], canjeado: ['bad', 'YA CANJEADO'], vencido: ['bad', 'VENCIDO'], anulado: ['bad', 'ANULADO'], otro_pais: ['bad', 'NO VÁLIDO EN ESTE PAÍS'] }[r.estado] || ['warn', r.estado];
+    res.innerHTML = `
+      <div class="card">
+        <div class="alert ${etiqueta[0]}" style="margin-top:0;font-weight:700">${etiqueta[1]}</div>
+        <h2 style="margin-bottom:2px">${C.esc(r.cupon)}</h2>
+        <div class="small muted">Código ${C.esc(r.codigo)} · Clienta: ${C.esc(r.madre || '')}</div>
+        <table style="margin-top:10px">
+          <tr><th>Beneficio</th><td>${C.esc(r.beneficio || '')}</td></tr>
+          <tr><th>Producto</th><td>${C.esc(r.producto || 'Según términos')}</td></tr>
+          <tr><th>Válido hasta</th><td>${r.vence ? C.fecha(r.vence) : 'Sin vencimiento'}</td></tr>
+          <tr><th>Usos</th><td>${r.usos}${r.usos_max ? ' de ' + r.usos_max : ''}</td></tr>
+        </table>
+        ${r.descripcion ? `<p class="small">${C.esc(r.descripcion)}</p>` : ''}
+        ${r.terminos ? `<details class="tyc"><summary>Términos y condiciones</summary><p>${C.esc(r.terminos)}</p></details>` : ''}
+        ${r.canjes.length ? `<p class="small muted">Canjes anteriores: ${r.canjes.map(c => C.fechaHora(c.fecha) + ' (' + C.esc(c.sucursal) + ')').join(', ')}</p>` : ''}
+        ${r.estado === 'disponible' ? `
+          <form id="fCanje">
+            <label for="fact">Número de factura</label>
+            <input id="fact" required maxlength="40" autocomplete="off">
+            <div id="eCanje"></div>
+            <button class="btn orange block" style="margin-top:12px" id="bCanje" type="submit">Confirmar canje</button>
+          </form>` : ''}
+      </div>`;
+    if (r.estado === 'disponible') {
+      $('#fact').focus();
+      $('#fCanje').onsubmit = async e => {
+        e.preventDefault();
+        const b = $('#bCanje'); b.disabled = true; b.innerHTML = '<span class="spinner"></span> Canjeando…';
+        try {
+          const k = await rpc('cup_farm_canjear', { p_token: C.ls.get(TK), p_codigo: r.codigo, p_factura: $('#fact').value });
+          res.innerHTML = `<div class="card"><div class="alert ok" style="margin-top:0;font-weight:700">✓ Canje registrado</div>
+            <p>Aplica el beneficio <b>${C.esc(r.beneficio || '')}</b> en la factura <b>${C.esc($('#fact') ? $('#fact').value : '')}</b>.</p>
+            <p class="small muted">Para el reembolso, conserva la copia de la factura. ${k.usos_max ? 'Usos: ' + k.usos + ' de ' + k.usos_max + '.' : ''}</p>
+            <button class="btn block" id="bOtro">Canjear otro código</button></div>`;
+          $('#bOtro').onclick = vistaCanjear;
+          $('#codigo').value = '';
+        } catch (err) {
+          if (sesionVencida(err)) return;
+          $('#eCanje').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`; b.disabled = false; b.textContent = 'Confirmar canje';
+        }
+      };
+    }
+  } catch (err) {
+    if (sesionVencida(err)) return;
+    res.innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`;
+  }
+}
+
+async function vistaReporte() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const d30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  $('#cont').innerHTML = `
+    <div class="card noprint"><div class="row">
+      <div><label for="desde" style="margin-top:0">Desde</label><input type="date" id="desde" value="${d30}"></div>
+      <div><label for="hasta" style="margin-top:0">Hasta</label><input type="date" id="hasta" value="${hoy}"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="bVer">Ver canjes</button><button class="btn ghost" id="bImp">Imprimir</button></div></div>
+    <div id="rep"></div>`;
+  $('#bVer').onclick = cargar; $('#bImp').onclick = () => window.print();
+  async function cargar() {
+    $('#rep').innerHTML = '<div class="card"><span class="spinner"></span></div>';
+    try {
+      const rows = await rpc('cup_farm_reporte', { p_token: C.ls.get(TK), p_desde: $('#desde').value, p_hasta: $('#hasta').value });
+      $('#rep').innerHTML = `<div class="card"><h3>${rows.length} canjes</h3>
+        <p class="small muted">Para reembolso: presenta la copia de cada factura con este reporte.</p>
+        <div class="tscroll"><table><tr><th>Fecha</th><th>Código</th><th>Cupón</th><th>Beneficio</th><th>Factura</th><th>Reembolso</th></tr>
+        ${rows.map(x => `<tr><td>${C.fechaHora(x.fecha)}</td><td>${C.esc(x.codigo)}</td><td>${C.esc(x.cupon)}</td><td>${C.esc(x.beneficio || '')}</td><td>${C.esc(x.factura || '')}</td><td>${C.esc(x.reembolso)}</td></tr>`).join('')}
+        </table></div></div>`;
+    } catch (err) { if (!sesionVencida(err)) $('#rep').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`; }
+  }
+  cargar();
+}
+
+$('#btnSalir').onclick = () => { C.ls.del(TK); C.ls.del(TS); login(); };
+C.ls.get(TK) ? principal() : login();
+</script>
+</body>
+</html>
