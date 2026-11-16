@@ -102,7 +102,7 @@ async function registro() {
       </div>
       ${medico ? '' : `<label for="med">¿Qué pediatra te recomendó el club? (opcional)</label><input id="med" maxlength="80">`}
       <label for="farm">¿En qué farmacia compras normalmente?</label>
-      <select id="farm"><option value="">Selecciona…</option>${farmacias.filter(f => f !== 'Prueba').map(f => `<option>${C.esc(f)}</option>`).join('')}<option>Otra</option></select>
+      <select id="farm"><option value="">Selecciona…</option>${farmacias.filter(f => f !== 'Prueba' && f !== 'Otro').map(f => `<option>${C.esc(f)}</option>`).join('')}<option>Otra</option></select>
       <label class="check"><input type="checkbox" id="cDatos" required>
         <span>Autorizo a Casa Ferne, S.A. (Nutribén) a guardar mis datos y los de mi bebé para darme los beneficios del club y medir su uso. Puedo pedir que los borren escribiendo al WhatsApp del club.</span></label>
       <label class="check"><input type="checkbox" id="cCont" checked>
