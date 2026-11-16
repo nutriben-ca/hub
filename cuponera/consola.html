@@ -562,6 +562,13 @@ async function inventario() {
         <td>${d.pendiente ? '<span class="chip warn">Pendiente</span>' : `<span class="chip ok">Atendido</span><div class="small muted">${C.esc(d.atendio || '')}${d.nota ? ' · ' + C.esc(d.nota) : ''}</div>`}</td>
         <td>${d.pendiente ? `<button class="btn sm ghost" data-at="${d.id}">Marcar atendido</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin reportes.</td></tr>'}
       </table></div></div>
+    <div class="card"><h2>Consultar inventario</h2>
+      <div class="row"><div><label style="margin-top:0">Producto</label><select id="qP">${prods.map(p => `<option value="${p.id}">${C.esc(p.nombre)}</option>`).join('')}</select></div>
+      <div><label style="margin-top:0">Ciudad</label><select id="qC"><option value="">Todas</option>${[...new Set(sucs.map(s => s.ciudad).filter(Boolean))].sort().map(c => `<option>${C.esc(c)}</option>`).join('')}</select></div>
+      <div><label style="margin-top:0">Cadena</label><select id="qK"><option value="">Todas</option>${[...new Set(sucs.map(s => s.cadena))].sort().map(c => `<option>${C.esc(c)}</option>`).join('')}</select></div></div>
+      <p class="small muted" id="qR" style="margin:10px 0 4px"></p>
+      <div class="tscroll" style="max-height:420px;overflow:auto"><table id="qT"></table></div>
+      ${YO.admin ? '<p class="small muted">Para pruebas puedes escribir la cantidad de una sucursal y tocar Guardar. La madre lo ve de inmediato en "Dónde comprar".</p>' : ''}</div>
     <div class="grid2">
       <div class="card"><h2>Inventario cargado</h2>
         <p class="small">${inv.length ? `${inv.length} registros · última carga ${C.fechaHora(ult)} · <b>${ceros.length}</b> en cero` : 'Aún no hay inventario cargado. Las madres ven la lista de farmacias sin semáforo.'}</p>
@@ -579,6 +586,32 @@ async function inventario() {
     const nota = prompt('¿Qué se hizo? (opcional)') ?? '';
     try { await rpc('cup_atender_desabasto', { p_id: b.dataset.at, p_nota: nota }); inventario(); } catch (e) { alert(C.msg(e)); }
   });
+  const iK = Object.fromEntries(inv.map(i => [i.sucursal_id + '|' + i.producto_id, i]));
+  const consulta = () => {
+    const pid = +$('#qP').value, ciu = $('#qC').value, cad = $('#qK').value;
+    const v = sucs.filter(s => (!ciu || s.ciudad === ciu) && (!cad || s.cadena === cad)).map(s => ({ s, i: iK[s.id + '|' + pid] }))
+      .sort((a, b) => (b.i ? b.i.cantidad : -1) - (a.i ? a.i.cantidad : -1) || a.s.codigo.localeCompare(b.s.codigo));
+    const con = v.filter(x => x.i), tot = con.reduce((t, x) => t + x.i.cantidad, 0);
+    $('#qR').textContent = `${v.length} sucursales · ${con.length} con dato · ${con.filter(x => x.i.cantidad === 0).length} en cero · ${tot} unidades en total`;
+    const viejo = d => new Date(d) < Date.now() - 3 * 864e5;
+    $('#qT').innerHTML = '<tr><th>Código</th><th>Sucursal</th><th>Ciudad</th><th>Cantidad</th><th>Actualizado</th><th>Fuente</th>' + (YO.admin ? '<th></th>' : '') + '</tr>' +
+      v.slice(0, 300).map(({ s, i }) => `<tr><td><b>${C.esc(s.codigo)}</b></td><td>${C.esc(s.cadena)} · ${C.esc(s.nombre)}</td><td>${C.esc(s.ciudad || '')}</td>
+        <td>${!i ? '<span class="chip gray">sin dato</span>' : `<span class="chip ${i.cantidad === 0 ? 'bad' : i.cantidad <= 2 ? 'warn' : 'ok'}">${i.cantidad}</span>`}</td>
+        <td class="small">${i ? C.fechaHora(i.actualizado_at) + (viejo(i.actualizado_at) ? ' <span class="chip warn">vencido</span>' : '') : ''}</td><td class="small muted">${C.esc(i && i.fuente || '')}</td>
+        ${YO.admin ? `<td style="white-space:nowrap"><input type="number" min="0" style="width:74px;padding:5px 6px" data-q="${s.id}" value="${i ? i.cantidad : ''}" aria-label="Cantidad ${C.esc(s.codigo)}"> <button class="btn sm ghost" data-g="${s.id}">Guardar</button></td>` : ''}</tr>`).join('');
+    $('#qT').querySelectorAll('[data-g]').forEach(b => b.onclick = async () => {
+      const s = sucs.find(x => x.id === b.dataset.g), val = $('#qT').querySelector(`[data-q="${s.id}"]`).value;
+      if (val === '' || +val < 0) return;
+      b.disabled = true;
+      try {
+        const r = await rpc('cup_cargar_inventario', { p_filas: [{ codigo: s.codigo, producto: pN[pid], cantidad: +val }], p_fuente: 'Manual · ' + YO.nombre });
+        if (!r.cargadas) throw new Error('No se pudo guardar');
+        iK[s.id + '|' + pid] = { sucursal_id: s.id, producto_id: pid, cantidad: Math.floor(+val), actualizado_at: new Date().toISOString(), fuente: 'Manual · ' + YO.nombre };
+        consulta();
+      } catch (e) { alert(C.msg(e)); b.disabled = false; }
+    });
+  };
+  $('#qP').onchange = consulta; $('#qC').onchange = consulta; $('#qK').onchange = consulta; consulta();
   if (!YO.admin) return;
   $('#iPl').onclick = () => csv('plantilla_inventario.csv', sucs.slice(0, 3).flatMap(s => prods.slice(0, 2).map(p => ({ codigo: s.codigo, producto: p.nombre, cantidad: 0 }))));
   $('#iGo').onclick = async () => {
