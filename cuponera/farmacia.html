@@ -48,7 +48,7 @@ function login(aviso) {
       <label for="cod">Código de sucursal</label>
       <input id="cod" required autocapitalize="characters" autocomplete="username" maxlength="12">
       <label for="pin">PIN</label>
-      <input id="pin" required type="password" inputmode="numeric" autocomplete="current-password" maxlength="8">
+      <div class="pwd"><input id="pin" required type="password" inputmode="numeric" autocomplete="current-password" maxlength="8"><button type="button" data-ver="pin" aria-pressed="false">Ver</button></div>
       <div id="eLog"></div>
       <button class="btn block" id="bLog" type="submit">Ingresar</button>
       <p class="small" style="text-align:center;margin:12px 0 0"><a href="#" id="olv">¿Olvidaste tu PIN?</a></p>

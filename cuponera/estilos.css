@@ -82,3 +82,6 @@ th{font-size:.75rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mut
 .prog{height:8px;background:#E7ECF4;border-radius:99px;overflow:hidden}
 .prog i{display:block;height:100%;background:var(--sky)}
 @media print{.noprint{display:none!important} body{background:#fff}}
+.pwd{position:relative}
+.pwd input{padding-right:84px}
+.pwd button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:var(--sky3);color:var(--navy);font:inherit;font-size:.8rem;font-weight:600;padding:6px 10px;border-radius:8px;cursor:pointer}

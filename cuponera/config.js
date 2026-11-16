@@ -60,3 +60,10 @@ window.CUP = {
     del(k) { try { localStorage.removeItem(k); } catch (e) {} }
   }
 };
+
+// Botón Ver/Ocultar en campos de contraseña
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-ver]'); if (!b) return;
+  const i = document.getElementById(b.dataset.ver); const ver = i.type === 'password';
+  i.type = ver ? 'text' : 'password'; b.textContent = ver ? 'Ocultar' : 'Ver'; b.setAttribute('aria-pressed', ver); i.focus();
+});

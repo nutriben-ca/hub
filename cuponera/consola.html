@@ -89,8 +89,9 @@ function login() {
   app.innerHTML = `<form class="card" id="fL" style="max-width:420px;margin:30px auto">
     <h2>Ingreso del equipo</h2><p class="small muted">Usa la misma cuenta de la app de gastos.</p>
     <label for="em">Correo</label><input id="em" type="email" required autocomplete="username">
-    <label for="pw">Contraseña</label><input id="pw" type="password" required autocomplete="current-password">
-    <div id="eL"></div><button class="btn block" style="margin-top:14px" id="bL">Ingresar</button></form>`;
+    <label for="pw">Contraseña</label><div class="pwd"><input id="pw" type="password" required autocomplete="current-password"><button type="button" data-ver="pw" aria-pressed="false">Ver</button></div>
+    <div id="eL"></div><button class="btn block" style="margin-top:14px" id="bL">Ingresar</button>
+    <p class="small muted" style="text-align:center;margin:12px 0 0">¿Olvidaste tu contraseña? Cámbiala en la <a href="https://nutriben-ca.github.io/gastos/" target="_blank" rel="noopener">app de gastos</a>; es la misma cuenta.</p></form>`;
   $('#fL').onsubmit = async e => {
     e.preventDefault(); $('#bL').disabled = true;
     const { error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
