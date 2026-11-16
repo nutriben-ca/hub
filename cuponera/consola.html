@@ -195,35 +195,117 @@ async function emitir() {
   };
 }
 
-// ---------- Tarjetas QR ----------
+// ---------- Tarjetas QR (impresa y digital) ----------
 function tarjetas() {
   const cont = $('#cont');
   cont.innerHTML = `<div class="grid2 noprint">
     <div class="card"><h2>Tarjeta "Comienzo saludable" por médico</h2>
-      <p class="small muted">Cada médico tiene un QR único: las madres que lo escanean quedan registradas con ese médico. Imprime en cartulina, 9 × 5 cm.</p>
+      <p class="small muted">Cada médico tiene un QR único: las madres que lo usan quedan registradas con ese médico.</p>
       <div id="selMed"></div></div>
-    <div class="card"><h2>Vista previa</h2><div id="prev" class="muted">Elige un médico.</div>
-      <div class="row noprint" style="margin-top:12px"><div><label>Cantidad a imprimir</label><input id="cant" type="number" min="1" max="40" value="10"></div></div>
-      <button class="btn" id="bImp" style="margin-top:12px" disabled>Imprimir tarjetas</button></div></div>
+    <div class="card"><h2>Tarjeta del médico</h2><div id="prev" class="muted">Elige un médico.</div></div></div>
+    <div class="grid2 noprint hidden" id="opciones">
+      <div class="card"><h3>Impresa</h3><p class="small muted">Cartulina 9 × 5 cm. El médico la entrega con la muestra o la indicación.</p>
+        <div class="row"><div><label>Cantidad a imprimir</label><input id="cant" type="number" min="1" max="40" value="10"></div></div>
+        <button class="btn" id="bImp" style="margin-top:12px">Imprimir tarjetas</button></div>
+      <div class="card"><h3>Digital</h3><p class="small muted">Para que el médico o su asistente la envíe por WhatsApp o la muestre en pantalla. Las madres que entren por aquí se cuentan aparte.</p>
+        <label>Enlace de registro del médico</label>
+        <div class="row" style="align-items:center"><input id="lnk" readonly style="flex:3 1 220px;font-size:.82rem"><button class="btn sm ghost" id="bCop" style="flex:0 0 auto">Copiar</button></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn sm" id="bPngH">Descargar tarjeta (imagen)</button>
+          <button class="btn sm" id="bPngV">Imagen para estado de WhatsApp</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <a class="btn sm" id="bWa" target="_blank" rel="noopener" style="background:#25D366;color:#073">Enviar al médico por WhatsApp</a>
+          <button class="btn sm light hidden" id="bShare">Compartir imagen…</button>
+        </div>
+        <div class="alert warn small" style="margin-top:12px">El enlace se puede reenviar. Si un médico lo publica en un grupo, otras madres quedan registradas como sus pacientes y pueden agotar el cupo de su campaña.</div>
+      </div></div>
     <div id="hoja" class="tarjetas"></div>`;
   let tar = null;
+  const urlImp = () => URL_MADRE + '?t=' + tar.codigo;
+  const urlDig = () => URL_MADRE + '?t=' + tar.codigo + '&d=1';
   const tfis = (t, i) => `<div class="tfis"><div class="izq"><b>Comienzo<br>saludable</b><small>Tu pediatra Dr(a). ${C.esc(titulo(t.medico))} te recomienda el Club Nutribén</small></div>
     <div class="der">Escanea para ingresar al formulario de registro<div class="q" id="q${i}"></div>WhatsApp ${C.esc(C.WHATSAPP_TXT)}</div></div>`;
   selectorMedico($('#selMed'), async m => {
     $('#prev').innerHTML = '<span class="spinner"></span>';
     try {
       tar = await rpc('cup_tarjeta_medico', { p_medico: m.id });
-      const url = URL_MADRE + '?t=' + tar.codigo;
-      $('#prev').innerHTML = tfis(tar, 'p') + `<p class="small muted" style="word-break:break-all">${C.esc(url)}</p>`;
-      qr($('#qp'), url, 120); $('#bImp').disabled = false;
+      $('#prev').innerHTML = tfis(tar, 'p') + `<p class="small muted">Código del médico: <b>${C.esc(tar.codigo)}</b></p>`;
+      qr($('#qp'), urlImp(), 120);
+      $('#opciones').classList.remove('hidden');
+      $('#lnk').value = urlDig();
+      const txt = `Dr(a). ${titulo(tar.medico)}, este es su enlace del Club Nutribén. Compártalo con los padres de sus pacientes para que se registren y reciban sus beneficios: ${urlDig()}`;
+      $('#bWa').href = 'https://wa.me/?text=' + encodeURIComponent(txt);
+      $('#bShare').classList.toggle('hidden', !(navigator.canShare && navigator.canShare({ files: [new File([''], 'a.png', { type: 'image/png' })] })));
     } catch (e) { $('#prev').innerHTML = err(e); }
   });
   $('#bImp').onclick = () => {
-    const n = Math.min(Math.max(+$('#cant').value || 1, 1), 40), url = URL_MADRE + '?t=' + tar.codigo;
+    const n = Math.min(Math.max(+$('#cant').value || 1, 1), 40);
     $('#hoja').innerHTML = Array.from({ length: n }, (_, i) => tfis(tar, i)).join('');
-    for (let i = 0; i < n; i++) qr($('#q' + i), url, 120);
+    for (let i = 0; i < n; i++) qr($('#q' + i), urlImp(), 120);
     setTimeout(() => window.print(), 400);
   };
+  $('#bCop').onclick = async () => {
+    try { await navigator.clipboard.writeText($('#lnk').value); $('#bCop').textContent = 'Copiado'; }
+    catch (e) { $('#lnk').select(); }
+  };
+  const nombreArchivo = suf => 'tarjeta-' + tar.codigo + '-' + titulo(tar.medico).replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g, '').trim().replace(/\s+/g, '-') + suf + '.png';
+  const bajar = (blob, nombre) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+  $('#bPngH').onclick = async () => bajar(await imagenTarjeta(tar, urlDig(), 'h'), nombreArchivo(''));
+  $('#bPngV').onclick = async () => bajar(await imagenTarjeta(tar, urlDig(), 'v'), nombreArchivo('-estado'));
+  $('#bShare').onclick = async () => {
+    const b = await imagenTarjeta(tar, urlDig(), 'h');
+    try { await navigator.share({ files: [new File([b], nombreArchivo(''), { type: 'image/png' })], text: 'Regístrate en el Club Nutribén: ' + urlDig() }); } catch (e) {}
+  };
+}
+
+// Dibuja la tarjeta digital como imagen PNG (h = tarjeta 1800×1000, v = estado 1080×1920)
+async function imagenTarjeta(t, url, formato) {
+  await document.fonts.ready;
+  const tmp = document.createElement('div');
+  new QRCode(tmp, { text: url, width: 700, height: 700, correctLevel: QRCode.CorrectLevel.M });
+  const qrc = tmp.querySelector('canvas');
+  const H = formato === 'h', W = H ? 1800 : 1080, Ht = H ? 1000 : 1920;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = Ht;
+  const g = cv.getContext('2d');
+  const navy = '#0033A1', sky = '#00A0DF';
+  const wrap = (txt, x, y, maxW, lh) => {
+    const pal = txt.split(' '); let lin = '';
+    for (const p of pal) { const prueba = lin ? lin + ' ' + p : p; if (g.measureText(prueba).width > maxW && lin) { g.fillText(lin, x, y); y += lh; lin = p; } else lin = prueba; }
+    if (lin) g.fillText(lin, x, y); return y + lh;
+  };
+  const med = 'Dr(a). ' + titulo(t.medico);
+  if (H) {
+    g.fillStyle = navy; g.fillRect(0, 0, W, Ht);
+    g.fillStyle = 'rgba(0,160,223,.35)'; g.beginPath(); g.arc(1080, -60, 300, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff'; g.font = '600 46px Poppins, sans-serif'; g.fillText('Nutribén®', 90, 130);
+    g.font = 'bold 128px Georgia, serif'; g.fillText('Comienzo', 90, 400); g.fillText('saludable', 90, 530);
+    g.font = '400 40px Poppins, sans-serif'; g.globalAlpha = .92;
+    let y = wrap('Tu pediatra ' + med + ' te recomienda el Club Nutribén: cupones, consejería gratuita y eventos.', 90, 650, 900, 56);
+    g.globalAlpha = 1; g.font = '600 36px Poppins, sans-serif'; g.fillText('WhatsApp ' + C.WHATSAPP_TXT, 90, 900);
+    g.fillStyle = '#fff'; g.fillRect(1160, 0, 640, Ht);
+    g.fillStyle = navy; g.font = '600 34px Poppins, sans-serif'; g.textAlign = 'center';
+    g.fillText('Escanea para registrarte', 1480, 150);
+    g.drawImage(qrc, 1220, 200, 520, 520);
+    g.font = '400 26px Poppins, sans-serif'; g.fillStyle = '#5B6782';
+    g.fillText('o abre el enlace que te enviaron', 1480, 780);
+    g.fillText('Código ' + t.codigo, 1480, 820);
+    g.font = '400 22px Poppins, sans-serif'; g.fillText('La leche materna es el mejor alimento para el lactante.', 1480, 950);
+  } else {
+    g.fillStyle = navy; g.fillRect(0, 0, W, Ht);
+    g.fillStyle = 'rgba(0,160,223,.35)'; g.beginPath(); g.arc(960, 120, 320, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff'; g.font = '600 48px Poppins, sans-serif'; g.fillText('Nutribén®', 90, 170);
+    g.font = 'bold 136px Georgia, serif'; g.fillText('Comienzo', 90, 400); g.fillText('saludable', 90, 540);
+    g.font = '400 44px Poppins, sans-serif';
+    wrap('Tu pediatra ' + med + ' te recomienda el Club Nutribén.', 90, 650, 900, 60);
+    g.fillStyle = '#fff'; g.beginPath(); g.roundRect(140, 820, 800, 860, 40); g.fill();
+    g.drawImage(qrc, 210, 880, 660, 660);
+    g.fillStyle = navy; g.font = '600 38px Poppins, sans-serif'; g.textAlign = 'center';
+    g.fillText('Escanea para registrarte', 540, 1620);
+    g.fillStyle = '#fff'; g.font = '600 38px Poppins, sans-serif'; g.fillText('WhatsApp ' + C.WHATSAPP_TXT, 540, 1770);
+    g.font = '400 26px Poppins, sans-serif'; g.globalAlpha = .85; g.fillText('La leche materna es el mejor alimento para el lactante.', 540, 1840);
+  }
+  return new Promise(r => cv.toBlob(r, 'image/png'));
 }
 
 // ---------- Cupones emitidos ----------
@@ -288,7 +370,8 @@ async function resumen() {
         <div class="grid2">${tabla('Por visitador', [['vm', 'VM'], ['emitidos', 'Emitidos'], ['canjes', 'Canjes']], d.por_vm)}
         ${tabla('Por plantilla', [['nombre', 'Plantilla'], ['emitidos', 'Emitidos'], ['canjes', 'Canjes']], d.por_plantilla)}
         ${tabla('Médicos (madres registradas con su QR)', [['medico', 'Médico'], ['madres', 'Madres'], ['canjes', 'Canjes']], d.por_medico)}
-        ${tabla('Canjes por cadena', [['cadena', 'Cadena'], ['canjes', 'Canjes']], d.por_cadena)}</div>`;
+        ${tabla('Canjes por cadena', [['cadena', 'Cadena'], ['canjes', 'Canjes']], d.por_cadena)}</div>
+        ${tabla('Madres por médico: tarjeta impresa vs. enlace digital', [['medico', 'Médico'], ['codigo', 'Código'], ['impresa', 'Impresa'], ['digital', 'Digital'], ['total', 'Total']], (await rpc('cup_medico_puertas')).slice(0, 40))}`;
     } catch (e) { $('#rC').innerHTML = err(e); }
   };
   $('#rV').onclick = ver; ver();

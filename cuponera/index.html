@@ -36,6 +36,7 @@ const $ = s => document.querySelector(s);
 const app = $('#app');
 const params = new URLSearchParams(location.search);
 const TARJETA = (params.get('t') || '').trim().toUpperCase();
+const ORIGEN = params.get('d') ? 'digital' : null;
 const TK = 'cup_madre_token';
 let estado = { tab: 'disp', datos: null };
 
@@ -121,7 +122,7 @@ async function registro() {
         p_tarjeta: TARJETA || null, p_nombre: $('#nombre').value, p_celular: $('#cel').value,
         p_bebe_nombre: $('#bebe').value, p_bebe_nac: $('#nac').value || null, p_farmacia: $('#farm').value,
         p_consent_contacto: $('#cCont').checked, p_consent_datos: $('#cDatos').checked,
-        p_medico_texto: $('#med') ? $('#med').value : null });
+        p_medico_texto: $('#med') ? $('#med').value : null, p_origen: ORIGEN });
       C.ls.set(TK, r.token);
       history.replaceState(null, '', location.pathname);
       cargarCupones(true);
