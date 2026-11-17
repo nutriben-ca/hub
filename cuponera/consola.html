@@ -547,7 +547,8 @@ async function inventario() {
   let des = [], inv = [], sucs = [], prods = [];
   try {
     des = await rpc('cup_desabastos');
-    const r = await Promise.all([sb.from('cup_inventario').select('sucursal_id,producto_id,cantidad,actualizado_at,fuente'),
+    const todoInv = async () => { let out = [], d = 0; for (;;) { const q = await sb.from('cup_inventario').select('sucursal_id,producto_id,cantidad,actualizado_at,fuente').order('sucursal_id').order('producto_id').range(d, d + 999); if (q.error) return q; out = out.concat(q.data || []); if (!q.data || q.data.length < 1000) return { data: out }; d += 1000; } };
+    const r = await Promise.all([todoInv(),
       sb.from('cup_sucursales').select('id,cadena,nombre,ciudad,codigo').eq('activa', true), sb.from('cup_productos').select('id,nombre').order('nombre')]);
     inv = r[0].data || []; sucs = r[1].data || []; prods = r[2].data || [];
   } catch (e) { cont.innerHTML = err(e); return; }
