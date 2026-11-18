@@ -110,7 +110,7 @@ function shell() {
     if (YO.gerencia) tabs.unshift(['resumen', 'Resumen']);
     if (YO.gerencia || YO.rol === 'controller') tabs.push(['canjes', 'Canjes y reembolsos']);
     tabs.push(['inventario', 'Inventario y desabasto'], ['sucursales', 'Farmacias y PIN' + (PEND ? ' (' + PEND + ')' : '')]);
-    if (YO.admin) tabs.splice(tabs.length - 1, 0, ['plantillas', 'Plantillas']);
+    if (YO.admin) tabs.splice(tabs.length - 1, 0, ['plantillas', 'Crear cupones']);
     if (YO.enfermera) tabs.push(['enfermeria', 'Enfermería']);
     if (YO.admin) tabs.push(['recursos', 'Biblioteca']);
   }
@@ -425,11 +425,11 @@ async function plantillas() {
     sb.from('cup_plantillas').select('*').order('created_at'), sb.from('cup_productos').select('*').eq('activo', true).order('nombre')]);
   if (e1) { cont.innerHTML = err(e1); return; }
   const prodN = id => (prods.find(p => p.id === id) || {}).nombre || '—';
-  cont.innerHTML = `<div class="card"><div class="row" style="align-items:center"><div><h2 style="margin:0">Plantillas de cupón</h2>
+  cont.innerHTML = `<div class="card"><div class="row" style="align-items:center"><div><h2 style="margin:0">Cupones (plantillas)</h2>
     <p class="small muted" style="margin:0">Los VM solo emiten desde plantillas activas de canal "VM". Las de canal "Bienvenida" se asignan solas al registrarse.</p></div>
-    <div style="flex:0 0 auto"><button class="btn" id="pN">Nueva plantilla</button></div></div>
+    <div style="flex:0 0 auto"><button class="btn" id="pN">Crear cupón</button></div></div>
     <div class="tscroll" style="margin-top:10px"><table><tr><th>Nombre</th><th>Beneficio</th><th>Producto</th><th>Tipo</th><th>Vigencia</th><th>Tope VM/mes</th><th>Canal</th><th>Estado</th><th></th></tr>
-    ${pls.map(p => `<tr><td><b>${C.esc(p.nombre)}</b></td><td>${C.esc(p.beneficio || '')}</td><td>${C.esc(prodN(p.producto_id))}</td>
+    ${pls.map(p => `<tr><td>${p.imagen_url ? `<img src="${C.esc(p.imagen_url)}" alt="" style="height:34px;vertical-align:middle;border-radius:6px;margin-right:6px">` : ''}<b>${C.esc(p.nombre)}</b></td><td>${C.esc(p.beneficio || '')}</td><td>${C.esc(prodN(p.producto_id))}</td>
       <td>${p.tipo === 'unico' ? 'Único' : p.tipo === 'cantidad' ? p.usos_por_madre + ' usos' : 'Hasta fecha'}</td>
       <td>${p.vigencia_dias ? p.vigencia_dias + ' días' : ''}${p.fecha_fin ? ' (máx. ' + C.fecha(p.fecha_fin) + ')' : ''}</td>
       <td>${p.tope_vm_mes ?? 'Sin tope'}${p.requiere_identidad ? ' <span class="chip warn">pide identidad</span>' : ''}</td><td>${p.canal === 'vm' ? 'VM' : 'Bienvenida'}</td>
@@ -437,25 +437,50 @@ async function plantillas() {
       <td><button class="btn sm ghost" data-e="${p.id}">Editar</button></td></tr>`).join('')}</table></div></div>`;
   const editor = p => {
     p = p || { tipo: 'unico', usos_por_madre: 1, canal: 'vm', activa: true, pais: 'Honduras', vigencia_dias: 30 };
-    modal(`<h2>${p.id ? 'Editar' : 'Nueva'} plantilla</h2>
-      <label>Nombre</label><input id="xN" value="${C.esc(p.nombre || '')}">
+    modal(`<h2>${p.id ? 'Editar' : 'Crear'} cupón</h2>
+      <label class="check" style="margin-top:0"><input type="checkbox" id="xA" ${p.activa ? 'checked' : ''}><span><b>Activo</b></span></label>
+      <label>Nombre de cupón</label><input id="xN" value="${C.esc(p.nombre || '')}">
+      <label>Descripción</label><textarea id="xD" rows="3">${C.esc(p.descripcion || '')}</textarea>
+      <label>Tipo de cupón</label><select id="xTi"><option value="unico">Único (se usa una sola vez)</option><option value="cantidad">Cantidad límite (varios usos por madre)</option><option value="fecha">Fecha límite (usos ilimitados hasta la fecha)</option></select>
+      <div id="xUw"><label>Cantidad límite (usos por madre)</label><input id="xU" type="number" min="1" max="50" value="${p.usos_por_madre || 1}"></div>
+      <label>Producto asociado</label><select id="xP"><option value="">Varios / según términos</option>${prods.map(o => `<option value="${o.id}" ${o.id === p.producto_id ? 'selected' : ''}>${C.esc(o.nombre)}</option>`).join('')}</select>
+      <label>Fecha de vencimiento</label><input id="xF" type="date" value="${p.fecha_fin || ''}">
+      <label>Imagen</label>
+      <div id="xIm" style="border:1.5px dashed var(--line);border-radius:12px;padding:12px;text-align:center;cursor:pointer"></div>
+      <input type="file" id="xIf" accept="image/jpeg,image/png,image/webp" class="hidden"><input type="hidden" id="xI" value="${C.esc(p.imagen_url || '')}">
+      <details style="margin-top:14px" ${p.id ? '' : 'open'}><summary style="cursor:pointer;font-weight:600">Reglas del cupón (beneficio, términos, topes, canal)</summary>
       <label>Beneficio (corto, se ve en el cupón)</label><input id="xB" value="${C.esc(p.beneficio || '')}" placeholder="10 %, L. 100, 2+1">
-      <label>Descripción</label><textarea id="xD" rows="2">${C.esc(p.descripcion || '')}</textarea>
       <label>Términos y condiciones</label><textarea id="xT" rows="4">${C.esc(p.terminos || '')}</textarea>
-      <label>Producto</label><select id="xP"><option value="">Varios / según términos</option>${prods.map(o => `<option value="${o.id}" ${o.id === p.producto_id ? 'selected' : ''}>${C.esc(o.nombre)}</option>`).join('')}</select>
-      <div class="row"><div><label>Tipo</label><select id="xTi"><option value="unico">Único (1 uso)</option><option value="cantidad">Cantidad límite</option><option value="fecha">Fecha límite (ilimitado)</option></select></div>
-      <div><label>Usos por madre</label><input id="xU" type="number" min="1" max="50" value="${p.usos_por_madre || 1}"></div></div>
-      <div class="row"><div><label>Vence a los (días)</label><input id="xV" type="number" min="1" max="730" value="${p.vigencia_dias ?? ''}"></div>
-      <div><label>Fecha final</label><input id="xF" type="date" value="${p.fecha_fin || ''}"></div></div>
+      <label>O vence a los (días) después de emitido</label><input id="xV" type="number" min="1" max="730" value="${p.vigencia_dias ?? ''}" placeholder="Opcional si ya hay fecha de vencimiento">
       <div class="row"><div><label>Tope por VM al mes</label><input id="xTo" type="number" min="0" value="${p.tope_vm_mes ?? ''}" placeholder="Sin tope"></div>
       <div><label>Tope total</label><input id="xTT" type="number" min="0" value="${p.tope_total ?? ''}" placeholder="Sin tope"></div></div>
       <div class="row"><div><label>Canal</label><select id="xC"><option value="vm">VM (lo emite el visitador)</option><option value="bienvenida">Bienvenida (automático al registrarse)</option></select></div>
       <div><label>País</label><select id="xPa"><option>Honduras</option><option>El Salvador</option><option>Nicaragua</option><option>Costa Rica</option></select></div></div>
-      <label>URL de imagen (opcional)</label><input id="xI" value="${C.esc(p.imagen_url || '')}">
       <label class="check"><input type="checkbox" id="xId" ${p.requiere_identidad ? 'checked' : ''}><span>Pedir el número de identidad de la madre al canjear (bloquea que la misma persona use varias cuentas)</span></label>
-      <label class="check"><input type="checkbox" id="xA" ${p.activa ? 'checked' : ''}><span>Activa</span></label>
-      <div id="xE"></div><div class="row"><button class="btn" id="xG">Guardar</button><button class="btn ghost" onclick="cerrarModal()">Cancelar</button></div>`);
+      </details>
+      <div id="xE"></div><div class="row" style="margin-top:12px"><button class="btn" id="xG">${p.id ? 'Guardar' : 'Crear cupón'}</button><button class="btn ghost" onclick="cerrarModal()">Cancelar</button></div>`);
     $('#xTi').value = p.tipo; $('#xC').value = p.canal; $('#xPa').value = p.pais;
+    const verTipo = () => $('#xUw').classList.toggle('hidden', $('#xTi').value !== 'cantidad');
+    $('#xTi').onchange = verTipo; verTipo();
+    const verImg = () => { const u = $('#xI').value; $('#xIm').innerHTML = u ? `<img src="${C.esc(u)}" alt="" style="max-height:120px;max-width:100%;border-radius:8px"><div class="small" style="margin-top:6px"><a href="#" id="xIc">Cambiar imagen</a> · <a href="#" id="xIq">Quitar</a></div>` : '<b style="color:var(--navy)">Subir imagen</b><div class="small muted">JPG, PNG o WebP. Se ajusta sola de tamaño.</div>';
+      if ($('#xIq')) $('#xIq').onclick = e => { e.preventDefault(); e.stopPropagation(); $('#xI').value = ''; verImg(); }; };
+    verImg();
+    $('#xIm').onclick = e => { if (e.target.id !== 'xIq') { e.preventDefault(); $('#xIf').click(); } };
+    $('#xIf').onchange = async () => {
+      const f = $('#xIf').files[0]; if (!f) return;
+      $('#xIm').innerHTML = '<span class="spinner"></span> Subiendo…';
+      try {
+        const bmp = await createImageBitmap(f), k = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+        const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+        cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+        const blob = await new Promise(r => cv.toBlob(r, 'image/webp', 0.85));
+        const ruta = 'plantillas/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.webp';
+        const { error } = await sb.storage.from('cup-imagenes').upload(ruta, blob, { contentType: 'image/webp', cacheControl: '31536000' });
+        if (error) throw error;
+        $('#xI').value = sb.storage.from('cup-imagenes').getPublicUrl(ruta).data.publicUrl;
+      } catch (e) { $('#xE').innerHTML = err(e); }
+      $('#xIf').value = ''; verImg();
+    };
     $('#xG').onclick = async () => {
       const num = id => $(id).value === '' ? null : +$(id).value;
       const tipo = $('#xTi').value;
@@ -464,7 +489,7 @@ async function plantillas() {
         vigencia_dias: num('#xV'), fecha_fin: $('#xF').value || null, tope_vm_mes: num('#xTo'), tope_total: num('#xTT'),
         canal: $('#xC').value, pais: $('#xPa').value, imagen_url: $('#xI').value.trim() || null, activa: $('#xA').checked, requiere_identidad: $('#xId').checked };
       if (!reg.nombre) return $('#xE').innerHTML = '<div class="alert warn">Falta el nombre.</div>';
-      if (!reg.vigencia_dias && !reg.fecha_fin) return $('#xE').innerHTML = '<div class="alert warn">Define días de vigencia o una fecha final.</div>';
+      if (!reg.vigencia_dias && !reg.fecha_fin) return $('#xE').innerHTML = '<div class="alert warn">Pon una fecha de vencimiento (o días de vigencia en "Reglas del cupón").</div>';
       const q = p.id ? sb.from('cup_plantillas').update(reg).eq('id', p.id) : sb.from('cup_plantillas').insert({ ...reg, created_by: YO.id });
       const { error } = await q;
       if (error) return $('#xE').innerHTML = err(error);
