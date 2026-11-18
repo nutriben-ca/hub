@@ -171,7 +171,26 @@ async function cargarCupones(recienRegistrada) {
   }
   $('#btnSalir').classList.remove('hidden');
   try { estado.citas = await rpc('cup_mis_citas', { p_token: C.ls.get(TK) }); } catch (e) { estado.citas = []; }
+  try { estado.recursos = await rpc('cup_mis_recursos', { p_token: C.ls.get(TK) }); } catch (e) { estado.recursos = []; }
   pintar(recienRegistrada);
+}
+
+// ---------- Biblioteca de recursos ----------
+function medio(r) {
+  const u = r.url || '';
+  const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/);
+  if (r.tipo === 'video' && yt) return `<div style="position:relative;padding-top:56.25%;margin-top:8px"><iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}" title="${C.esc(r.titulo)}" loading="lazy" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:10px"></iframe></div>`;
+  if (r.tipo === 'video' && /\.(mp4|webm)(\?|$)/i.test(u)) return `<video controls preload="none" style="width:100%;border-radius:10px;margin-top:8px" src="${C.esc(u)}"></video>`;
+  if (r.tipo === 'guia') return `<details class="tyc"><summary>Leer</summary><p style="white-space:pre-wrap">${C.esc(r.contenido || '')}</p></details>`;
+  return `<a class="btn sm ghost" style="margin-top:8px" href="${C.esc(u)}" target="_blank" rel="noopener">${r.tipo === 'video' ? 'Ver video' : 'Abrir'}</a>`;
+}
+function biblioteca() {
+  const rs = estado.recursos || [];
+  if (!rs.length) return '<div class="card muted" style="text-align:center">Muy pronto encontrarás aquí videos y guías para el cuidado de tu bebé, revisados por nuestro equipo médico.</div>';
+  return Object.keys(C.CATEGORIAS).filter(k => rs.some(r => r.categoria === k)).map(k => `<h3 style="margin:14px 0 6px">${C.esc(C.CATEGORIAS[k])}</h3>` +
+    rs.filter(r => r.categoria === k).map(r => `<div class="card"><h3 style="margin:0 0 2px">${C.esc(r.titulo)}</h3>
+      ${r.descripcion ? `<div class="small muted">${C.esc(r.descripcion)}</div>` : ''}${medio(r)}</div>`).join('')).join('') +
+    '<p class="small muted" style="text-align:center">Esta información es educativa y no sustituye la consulta con tu pediatra.</p>';
 }
 
 // ---------- Enfermera: agendar llamada ----------
@@ -251,8 +270,9 @@ function pintar(recienRegistrada) {
     <div class="tabs" role="tablist">
       <button class="${estado.tab === 'disp' ? 'on' : ''}" data-t="disp">Cupones disponibles (${disp.length})</button>
       <button class="${estado.tab === 'usados' ? 'on' : ''}" data-t="usados">Canjeados</button>
+      <button class="${estado.tab === 'bib' ? 'on' : ''}" data-t="bib">Biblioteca</button>
     </div>
-    <div id="lista">${lista.length ? lista.map(tarjetaCupon).join('') :
+    <div id="lista">${estado.tab === 'bib' ? biblioteca() : lista.length ? lista.map(tarjetaCupon).join('') :
       `<div class="card muted" style="text-align:center">${estado.tab === 'disp' ? 'No tienes cupones disponibles por ahora. Pregúntale a tu pediatra por los beneficios del club.' : 'Aún no has canjeado cupones.'}</div>`}</div>
     <button class="btn light block" id="bRef" type="button">Actualizar</button>`;
   app.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { estado.tab = b.dataset.t; pintar(); });

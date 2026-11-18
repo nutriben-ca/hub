@@ -42,9 +42,12 @@ window.CUP = {
     CITA_NO_ENCONTRADA: 'No encontramos esa cita o ya no se puede cancelar.',
     SIN_PERMISO: 'No tienes permiso para esta acción.',
     MADRE_NO_ENCONTRADA: 'No se encontró a la madre o no autorizó el contacto.',
-    DATOS_INVALIDOS: 'Revisa los datos: hay un valor inválido.'
+    DATOS_INVALIDOS: 'Revisa los datos: hay un valor inválido.',
+    FALTA_APROBACION: 'Para publicar un recurso debes escribir quién lo aprobó (p. ej. la Dra. Tonantzin).',
+    RECURSO_NO_ENCONTRADO: 'No se encontró el recurso.'
   },
   MOTIVOS: { colico: 'Cólico', estrenimiento: 'Estreñimiento', lactancia: 'Lactancia', alimentacion: 'Alimentación / ablactación', sueno: 'Sueño', otro: 'Otro tema' },
+  CATEGORIAS: { colico: 'Cólicos', estrenimiento: 'Estreñimiento', lactancia: 'Lactancia', alimentacion: 'Alimentación y ablactación', sueno: 'Sueño', cuidados: 'Cuidados del bebé', otro: 'Otros temas' },
   // Fecha y hora de una cita, siempre en hora de Honduras / El Salvador (UTC-6)
   fechaCita(d) {
     return d ? new Date(d).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
