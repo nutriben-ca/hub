@@ -35,8 +35,23 @@ window.CUP = {
     IDENTIDAD_REQUERIDA: 'Este cupón pide el número de identidad de la madre o tutor.',
     IDENTIDAD_INVALIDA: 'Revisa el número de identidad (13 dígitos; DUI de 9).',
     IDENTIDAD_YA_USADA: 'Esa identidad ya está ligada a otra cuenta del club. No apliques el beneficio.',
-    IDENTIDAD_NO_COINCIDE: 'La identidad no coincide con la registrada para esta clienta. No apliques el beneficio.'
+    IDENTIDAD_NO_COINCIDE: 'La identidad no coincide con la registrada para esta clienta. No apliques el beneficio.',
+    SIN_CONSENTIMIENTO_CONTACTO: 'Para agendar necesitamos tu autorización para que la enfermera te contacte. Escríbenos por WhatsApp para activarla.',
+    YA_TIENE_CITA: 'Ya tienes una llamada agendada. Cancélala si quieres elegir otro horario.',
+    HORARIO_NO_DISPONIBLE: 'Ese horario ya no está disponible. Elige otro.',
+    CITA_NO_ENCONTRADA: 'No encontramos esa cita o ya no se puede cancelar.',
+    SIN_PERMISO: 'No tienes permiso para esta acción.',
+    MADRE_NO_ENCONTRADA: 'No se encontró a la madre o no autorizó el contacto.',
+    DATOS_INVALIDOS: 'Revisa los datos: hay un valor inválido.'
   },
+  MOTIVOS: { colico: 'Cólico', estrenimiento: 'Estreñimiento', lactancia: 'Lactancia', alimentacion: 'Alimentación / ablactación', sueno: 'Sueño', otro: 'Otro tema' },
+  // Fecha y hora de una cita, siempre en hora de Honduras / El Salvador (UTC-6)
+  fechaCita(d) {
+    return d ? new Date(d).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  },
+  diaCita(d) { return new Date(d).toLocaleDateString('es-HN', { timeZone: 'America/Tegucigalpa', weekday: 'long', day: 'numeric', month: 'long' }); },
+  horaCita(d) { return new Date(d).toLocaleTimeString('es-HN', { timeZone: 'America/Tegucigalpa', hour: '2-digit', minute: '2-digit' }); },
+  claveDia(d) { return new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/Tegucigalpa' }); },
   msg(e) {
     const t = (e && (e.message || e.msg || String(e))) || 'Error';
     for (const k in this.ERRORES) if (t.includes(k)) return this.ERRORES[k];

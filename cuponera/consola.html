@@ -56,7 +56,7 @@ const $ = s => document.querySelector(s);
 const app = $('#app');
 const URL_MADRE = new URL('index.html', location.href).href;
 const URL_FARM = new URL('farmacia.html', location.href).href;
-let YO = null, tab = null, PEND = 0;
+let YO = null, tab = null, PEND = 0, soloEnf = false, subEnf = 'agenda';
 
 async function rpc(fn, args) { const { data, error } = await sb.rpc(fn, args); if (error) throw error; return data; }
 function err(e) { return `<div class="alert bad">${C.esc(C.msg(e))}</div>`; }
@@ -78,10 +78,11 @@ async function arrancar() {
   if (!data.session) return login();
   try { YO = await rpc('cup_yo'); } catch (e) { YO = null; }
   if (!YO) { app.innerHTML = `<div class="card"><div class="alert bad">Tu cuenta no tiene un perfil activo del equipo.</div><button class="btn" id="bS">Salir</button></div>`; $('#bS').onclick = salir; return; }
-  $('#quien').textContent = YO.nombre + ' · ' + (YO.admin ? 'Administrador' : YO.gerencia ? 'Gerencia' : 'Visitador médico');
+  $('#quien').textContent = YO.nombre + ' · ' + (YO.admin ? 'Administrador' : YO.gerencia ? 'Gerencia' : (YO.enfermera && !YO.mr) ? 'Enfermera' : 'Visitador médico');
   $('#btnSalir').classList.remove('hidden');
-  tab = tab || (YO.admin ? 'resumen' : 'emitir');
-  try { PEND = (await rpc('cup_pin_pendientes')).length; } catch (e) { PEND = 0; }
+  soloEnf = !!(YO.enfermera && !YO.admin && !YO.mr);
+  tab = tab || (soloEnf ? 'enfermeria' : YO.admin ? 'resumen' : 'emitir');
+  if (!soloEnf) { try { PEND = (await rpc('cup_pin_pendientes')).length; } catch (e) { PEND = 0; } }
   shell();
 }
 function login() {
@@ -103,14 +104,18 @@ async function salir() { await sb.auth.signOut(); YO = null; tab = null; login()
 $('#btnSalir').onclick = salir;
 
 function shell() {
-  const tabs = [['emitir', 'Emitir cupón'], ['tarjetas', 'Tarjetas QR'], ['cupones', 'Cupones emitidos'], ['campanas', 'Campañas']];
-  if (YO.gerencia) tabs.unshift(['resumen', 'Resumen']);
-  if (YO.gerencia || YO.rol === 'controller') tabs.push(['canjes', 'Canjes y reembolsos']);
-  tabs.push(['inventario', 'Inventario y desabasto'], ['sucursales', 'Farmacias y PIN' + (PEND ? ' (' + PEND + ')' : '')]);
-  if (YO.admin) tabs.splice(tabs.length - 1, 0, ['plantillas', 'Plantillas']);
+  if (soloEnf) tab = 'enfermeria';
+  const tabs = soloEnf ? [['enfermeria', 'Enfermería']] : [['emitir', 'Emitir cupón'], ['tarjetas', 'Tarjetas QR'], ['cupones', 'Cupones emitidos'], ['campanas', 'Campañas']];
+  if (!soloEnf) {
+    if (YO.gerencia) tabs.unshift(['resumen', 'Resumen']);
+    if (YO.gerencia || YO.rol === 'controller') tabs.push(['canjes', 'Canjes y reembolsos']);
+    tabs.push(['inventario', 'Inventario y desabasto'], ['sucursales', 'Farmacias y PIN' + (PEND ? ' (' + PEND + ')' : '')]);
+    if (YO.admin) tabs.splice(tabs.length - 1, 0, ['plantillas', 'Plantillas']);
+    if (YO.enfermera) tabs.push(['enfermeria', 'Enfermería']);
+  }
   app.innerHTML = `<div class="ntabs">${tabs.map(t => `<button data-t="${t[0]}" class="${tab === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div><div id="cont"></div>`;
   app.querySelectorAll('.ntabs button').forEach(b => b.onclick = () => { tab = b.dataset.t; shell(); });
-  ({ resumen, emitir, tarjetas, cupones, campanas, canjes, plantillas, sucursales, inventario })[tab]();
+  ({ resumen, emitir, tarjetas, cupones, campanas, canjes, plantillas, sucursales, inventario, enfermeria })[tab]();
 }
 
 // ---------- Selector de médico (panel del VM) ----------
@@ -632,6 +637,165 @@ async function inventario() {
       $('#iGo').disabled = false;
     } catch (e) { $('#iE').innerHTML = err(e); $('#iGo').disabled = false; }
   };
+}
+
+
+// ---------- Enfermería: agenda, seguimiento, protocolos, horarios ----------
+const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+function edadBebe(d) {
+  if (d == null) return '';
+  if (d < 0) return 'por nacer';
+  if (d < 45) return d + ' días';
+  if (d < 730) return Math.round(d / 30.4) + ' meses';
+  return Math.round(d / 365) + ' años';
+}
+function telWa(cel) {
+  let d = String(cel || '').replace(/\D/g, ''); if (d.length === 8) d = '504' + d;
+  return `<a href="tel:+${d}">${C.esc(cel)}</a> · <a href="https://wa.me/${d}" target="_blank" rel="noopener">WhatsApp</a>`;
+}
+async function enfermeria() {
+  const cont = $('#cont'); cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
+  const hoy = new Date().toISOString().slice(0, 10), fin = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  let B, ag;
+  try { [B, ag] = await Promise.all([rpc('cup_enf_bandeja'), rpc('cup_enf_agenda', { p_desde: hoy, p_hasta: fin })]); }
+  catch (e) { cont.innerHTML = err(e); return; }
+  const k = B.kpi;
+  const subs = [['agenda', 'Agenda (' + ag.filter(c => c.estado === 'agendada').length + ')'], ['madres', 'Madres (' + k.madres + ')'], ['protocolos', 'Protocolos'], ['horarios', 'Mis horarios']];
+  if (YO.admin) subs.push(['equipo', 'Equipo']);
+  cont.innerHTML = `
+    <div class="card"><div class="row" style="text-align:center">
+      ${[['Madres con contacto autorizado', k.madres], ['Sin contactar aún', k.sin_contactar], ['Citas agendadas', k.citas_agendadas], ['Seguimientos (30 d)', k.seguimientos_30d], ['Madres contactadas (30 d)', k.contactadas_30d], ['Citas realizadas (30 d)', k.citas_realizadas_30d]]
+        .map(x => `<div><div style="font-size:1.6rem;font-weight:800;color:var(--navy)">${x[1]}</div><div class="small muted">${x[0]}</div></div>`).join('')}</div></div>
+    <div class="seg" id="subs">${subs.map(x => `<button data-s="${x[0]}" class="${subEnf === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
+    <div id="sub"></div>`;
+  cont.querySelectorAll('#subs button').forEach(b => b.onclick = () => { subEnf = b.dataset.s; enfermeria(); });
+  const sub = $('#sub');
+  ({ agenda: () => enfAgenda(sub, ag), madres: () => enfMadres(sub, B.madres), protocolos: () => enfProtocolos(sub), horarios: () => enfHorarios(sub), equipo: () => enfEquipo(sub) })[subEnf]();
+}
+
+function enfAgenda(sub, ag) {
+  const vivas = ag.filter(c => c.estado === 'agendada');
+  const dias = {};
+  vivas.forEach(c => (dias[C.claveDia(c.inicio)] = dias[C.claveDia(c.inicio)] || []).push(c));
+  sub.innerHTML = Object.keys(dias).length ? Object.keys(dias).sort().map(d => `<div class="card"><h2 style="text-transform:capitalize">${C.esc(C.diaCita(dias[d][0].inicio))}</h2>
+    ${dias[d].map(c => `<div style="border-top:1px solid var(--line);padding:10px 0">
+      <b>${C.esc(C.horaCita(c.inicio))}</b> · ${C.esc(titulo(c.madre))} ${c.es_prueba ? '<span class="chip warn">prueba</span>' : ''}
+      <span class="chip">${c.modalidad === 'videollamada' ? 'Videollamada' : 'Llamada'}</span> <span class="chip">${C.esc(C.MOTIVOS[c.motivo] || c.motivo)}</span>
+      <div class="small">${telWa(c.celular)} · Bebé: ${C.esc(c.bebe || '—')} (${edadBebe(Math.floor((Date.now() - new Date(c.bebe_nac + 'T12:00:00')) / 864e5))})</div>
+      ${c.nota_madre ? `<div class="small muted">“${C.esc(c.nota_madre)}”</div>` : ''}
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" data-reg="${c.madre_id}" data-cita="${c.id}">Registrar contacto</button>
+      <button class="btn sm ghost" data-vf="${c.madre_id}">Ver ficha</button><button class="btn sm light" data-can="${c.id}">Cancelar cita</button></div></div>`).join('')}</div>`).join('')
+    : '<div class="card muted">No hay llamadas agendadas en los próximos 14 días.</div>';
+  sub.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => ficha(b.dataset.reg, b.dataset.cita));
+  sub.querySelectorAll("[data-vf]").forEach(b => b.onclick = () => ficha(b.dataset.vf));
+  sub.querySelectorAll('[data-can]').forEach(b => b.onclick = async () => {
+    if (!confirm('¿Cancelar esta cita? Avísale a la madre por WhatsApp.')) return;
+    try { await rpc('cup_enf_cita_cancelar', { p_id: b.dataset.can }); enfermeria(); } catch (e) { alert(C.msg(e)); }
+  });
+}
+
+function enfMadres(sub, madres) {
+  sub.innerHTML = `<div class="card"><div class="row" style="align-items:end">
+    <div><label style="margin-top:0">Mostrar</label><select id="mF"><option value="pend">Por contactar (nunca o vencido)</option><option value="todas">Todas</option><option value="cita">Con cita agendada</option></select></div>
+    <div><label style="margin-top:0">Buscar</label><input id="mB" placeholder="Nombre, celular o bebé"></div>
+    <div style="flex:0 0 auto"><label class="check" style="margin:0"><input type="checkbox" id="mP"> Incluir pruebas</label></div></div>
+    <p class="small muted" id="mR" style="margin:10px 0 4px"></p><div class="tscroll" style="max-height:560px;overflow:auto"><table id="mT"></table></div></div>`;
+  const pintar = () => {
+    const f = $('#mF').value, q = $('#mB').value.toLowerCase(), pr = $('#mP').checked;
+    const v = madres.filter(m => (pr || !m.es_prueba) && (f === 'todas' || (f === 'cita' ? m.cita : m.prioridad <= 1)) &&
+      (!q || (m.nombre + ' ' + m.celular + ' ' + (m.bebe_nombre || '')).toLowerCase().includes(q)));
+    $('#mR').textContent = v.length + ' madres';
+    $('#mT').innerHTML = '<tr><th>Madre</th><th>Celular</th><th>Bebé</th><th>Último contacto</th><th>Próximo</th><th></th></tr>' + v.slice(0, 300).map(m => `<tr>
+      <td><b>${C.esc(titulo(m.nombre))}</b> ${m.es_prueba ? '<span class="chip warn">prueba</span>' : ''}${m.cita ? `<div class="small"><span class="chip ok">Cita ${C.esc(C.fechaCita(m.cita))}</span></div>` : ''}</td>
+      <td class="small">${telWa(m.celular)}</td><td class="small">${C.esc(m.bebe_nombre || '—')}<div class="muted">${edadBebe(m.edad_dias)}</div></td>
+      <td class="small">${m.ultimo ? C.fecha(m.ultimo) : '<span class="chip warn">nunca</span>'}</td>
+      <td class="small">${m.proximo ? (m.proximo <= new Date().toISOString().slice(0, 10) ? '<span class="chip bad">' + C.fecha(m.proximo) + '</span>' : C.fecha(m.proximo)) : ''}</td>
+      <td><button class="btn sm ghost" data-f="${m.id}">Ficha / registrar</button></td></tr>`).join('');
+    $('#mT').querySelectorAll('[data-f]').forEach(b => b.onclick = () => ficha(b.dataset.f));
+  };
+  $('#mF').onchange = pintar; $('#mB').oninput = pintar; $('#mP').onchange = pintar; pintar();
+}
+
+async function ficha(id, citaId) {
+  modal('<span class="spinner"></span>');
+  let d;
+  try { d = await rpc('cup_enf_madre', { p_madre: id }); } catch (e) { modal(err(e) + '<button class="btn block" onclick="cerrarModal()">Cerrar</button>'); return; }
+  const m = d.madre, hoy = new Date().toISOString().slice(0, 10);
+  const prox = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  modal(`<h2>${C.esc(titulo(m.nombre))}</h2>
+    <div class="small">${telWa(m.celular)}</div>
+    <div class="small muted">Bebé: ${C.esc(m.bebe || '—')} · ${C.fecha(m.bebe_nac)} (${edadBebe(Math.floor((Date.now() - new Date(m.bebe_nac + 'T12:00:00')) / 864e5))})${m.medico ? ' · Pediatra: ' + C.esc(titulo(m.medico)) : ''}${m.farmacia ? ' · Compra en: ' + C.esc(m.farmacia) : ''}</div>
+    <div class="card" style="margin:12px 0"><h3 style="margin:0 0 6px">Registrar contacto</h3>
+      <div class="row"><div><label style="margin-top:0">Canal</label><select id="fCa"><option value="llamada">Llamada</option><option value="videollamada">Videollamada</option><option value="whatsapp">WhatsApp</option></select></div>
+      <div><label style="margin-top:0">Resultado</label><select id="fRe"><option value="contactada">Contactada</option><option value="no_contesto">No contestó</option><option value="reagendar">Pidió reagendar</option></select></div></div>
+      <label>Notas (evolución, recomendaciones dadas)</label><textarea id="fNo" rows="3" maxlength="2000" style="width:100%"></textarea>
+      <label>Próximo contacto</label><input type="date" id="fPr" value="${prox}" min="${hoy}">
+      <div id="fE"></div><button class="btn block" style="margin-top:10px" id="fG">Guardar seguimiento</button></div>
+    <h3 style="margin:8px 0 4px">Historial</h3>
+    <div style="max-height:220px;overflow:auto">${d.seguimientos.map(s => `<div style="border-top:1px solid var(--line);padding:6px 0" class="small"><b>${C.fechaHora(s.at)}</b> · ${C.esc(s.canal)} · ${C.esc(s.resultado.replace('_', ' '))}${s.por ? ' · ' + C.esc(s.por) : ''}${s.nota ? '<div>' + C.esc(s.nota) + '</div>' : ''}</div>`).join('') || '<div class="small muted">Sin seguimientos.</div>'}</div>
+    ${d.citas.length ? `<h3 style="margin:10px 0 4px">Citas</h3>${d.citas.map(c => `<div class="small">${C.esc(C.fechaCita(c.inicio))} · ${C.esc(C.MOTIVOS[c.motivo] || c.motivo)} · ${C.esc(c.estado.replace('_', ' '))}</div>`).join('')}` : ''}
+    <button class="btn light block" style="margin-top:12px" onclick="cerrarModal()">Cerrar</button>`);
+  $('#fG').onclick = async () => {
+    $('#fG').disabled = true;
+    try {
+      await rpc('cup_enf_seguimiento_add', { p_madre: id, p_canal: $('#fCa').value, p_resultado: $('#fRe').value, p_nota: $('#fNo').value, p_proximo: $('#fPr').value || null, p_cita: citaId || null });
+      cerrarModal(); enfermeria();
+    } catch (e) { $('#fE').innerHTML = err(e); $('#fG').disabled = false; }
+  };
+}
+
+async function enfProtocolos(sub) {
+  let ps; try { ps = await rpc('cup_protocolos_list'); } catch (e) { sub.innerHTML = err(e); return; }
+  sub.innerHTML = ps.map(p => `<div class="card"><h2>${C.esc(p.titulo)} ${p.validado ? `<span class="chip ok">Validado por ${C.esc(p.validado_por || 'la Dra.')}</span>` : '<span class="chip warn">Pendiente de validación médica</span>'}</h2>
+    ${YO.admin ? `<textarea id="pc_${p.clave}" rows="10" style="width:100%" maxlength="20000" placeholder="Escribe aquí el protocolo (pasos, señales de alarma, cuándo derivar al pediatra)…">${C.esc(p.contenido)}</textarea>
+      <label class="check"><input type="checkbox" id="pv_${p.clave}" ${p.validado ? 'checked' : ''}> <span>Validado por la Dra.</span></label>
+      <input id="pn_${p.clave}" placeholder="Nombre de quien valida" value="${C.esc(p.validado_por || '')}" maxlength="80">
+      <div id="pe_${p.clave}"></div><button class="btn sm" style="margin-top:8px" data-gp="${p.clave}">Guardar</button>`
+    : (p.contenido ? `<div style="white-space:pre-wrap">${C.esc(p.contenido)}</div>${p.validado ? '' : '<div class="alert warn small">Aún no está validado: no lo uses como guía con las madres.</div>'}` : '<p class="muted">Aún no se ha cargado el protocolo.</p>')}</div>`).join('');
+  sub.querySelectorAll('[data-gp]').forEach(b => b.onclick = async () => {
+    const c = b.dataset.gp;
+    try { await rpc('cup_protocolo_guardar', { p_clave: c, p_contenido: $('#pc_' + c).value, p_validado: $('#pv_' + c).checked, p_validado_por: $('#pn_' + c).value }); enfermeria(); }
+    catch (e) { $('#pe_' + c).innerHTML = err(e); }
+  });
+}
+
+async function enfHorarios(sub) {
+  let H; try { H = await rpc('cup_enf_horarios'); } catch (e) { sub.innerHTML = err(e); return; }
+  let hs = H.horarios.slice();
+  const pintar = () => {
+    sub.innerHTML = `<div class="card"><h2>Horario de atención</h2>
+      <p class="small muted">Las madres solo pueden agendar dentro de estos bloques (hora de Honduras), con al menos 3 horas de anticipación y hasta 14 días adelante.</p>
+      <table><tr><th>Día</th><th>Desde</th><th>Hasta</th><th>Minutos por llamada</th><th></th></tr>
+      ${hs.map((h, i) => `<tr><td><select data-i="${i}" data-c="dow">${DIAS.map((n, d) => `<option value="${d}" ${d === h.dow ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
+        <td><input type="time" data-i="${i}" data-c="desde" value="${h.desde}"></td><td><input type="time" data-i="${i}" data-c="hasta" value="${h.hasta}"></td>
+        <td><input type="number" min="10" max="60" step="5" style="width:70px" data-i="${i}" data-c="duracion" value="${h.duracion}"></td>
+        <td><button class="btn sm light" data-x="${i}">Quitar</button></td></tr>`).join('')}</table>
+      <div id="hE"></div><div class="row" style="margin-top:10px"><button class="btn sm ghost" id="hA">Agregar bloque</button><button class="btn sm" id="hG">Guardar horario</button></div></div>
+      <div class="card"><h2>Días sin atención (feriados, vacaciones)</h2>
+      ${H.bloqueos.map(b => `<div class="small" style="padding:4px 0">${C.fecha(b.fecha)} ${b.motivo ? '· ' + C.esc(b.motivo) : ''} <button class="btn sm light" data-qb="${b.fecha}">Quitar</button></div>`).join('') || '<p class="small muted">Sin días bloqueados.</p>'}
+      <div class="row" style="align-items:end;margin-top:8px"><div><label style="margin-top:0">Fecha</label><input type="date" id="bF"></div><div><label style="margin-top:0">Motivo</label><input id="bM" maxlength="80"></div>
+      <div style="flex:0 0 auto"><button class="btn sm" id="bA">Bloquear día</button></div></div></div>`;
+    sub.querySelectorAll('[data-i]').forEach(el => el.onchange = () => { const h = hs[+el.dataset.i], c = el.dataset.c; h[c] = (c === 'dow' || c === 'duracion') ? +el.value : el.value; });
+    sub.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { hs.splice(+b.dataset.x, 1); pintar(); });
+    $('#hA').onclick = () => { hs.push({ dow: 1, desde: '09:00', hasta: '12:00', duracion: 20 }); pintar(); };
+    $('#hG').onclick = async () => {
+      if (hs.some(h => !h.desde || !h.hasta || h.hasta <= h.desde)) return $('#hE').innerHTML = '<div class="alert warn">Revisa las horas: "Hasta" debe ser mayor que "Desde".</div>';
+      try { await rpc('cup_enf_horarios_set', { p_horarios: hs }); $('#hE').innerHTML = '<div class="alert ok">Horario guardado.</div>'; } catch (e) { $('#hE').innerHTML = err(e); }
+    };
+    $('#bA').onclick = async () => { if (!$('#bF').value) return; try { await rpc('cup_enf_bloqueo', { p_fecha: $('#bF').value, p_motivo: $('#bM').value, p_quitar: false }); enfermeria(); } catch (e) { alert(C.msg(e)); } };
+    sub.querySelectorAll('[data-qb]').forEach(b => b.onclick = async () => { try { await rpc('cup_enf_bloqueo', { p_fecha: b.dataset.qb, p_motivo: null, p_quitar: true }); enfermeria(); } catch (e) { alert(C.msg(e)); } });
+  };
+  pintar();
+}
+
+async function enfEquipo(sub) {
+  let eq; try { eq = await rpc('cup_enf_equipo'); } catch (e) { sub.innerHTML = err(e); return; }
+  sub.innerHTML = `<div class="card"><h2>Quién es enfermera del club</h2>
+    <p class="small muted">Marca a la persona que atenderá la agenda y el seguimiento. Debe tener cuenta en la app de gastos (es la misma que usa esta consola). Quien sea enfermera solo ve la pestaña Enfermería.</p>
+    <table>${eq.map(p => `<tr><td>${C.esc(p.nombre)}</td><td class="small muted">${C.esc(p.rol)}</td><td><label class="check" style="margin:0"><input type="checkbox" data-e="${p.id}" ${p.enfermera ? 'checked' : ''}> Enfermera</label></td></tr>`).join('')}</table></div>`;
+  sub.querySelectorAll('[data-e]').forEach(c => c.onchange = async () => {
+    try { await rpc('cup_enf_asignar', { p_profile: c.dataset.e, p_activa: c.checked }); } catch (e) { alert(C.msg(e)); c.checked = !c.checked; }
+  });
 }
 
 window.cerrarModal = cerrarModal;

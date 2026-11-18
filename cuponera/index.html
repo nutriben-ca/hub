@@ -170,7 +170,65 @@ async function cargarCupones(recienRegistrada) {
     return;
   }
   $('#btnSalir').classList.remove('hidden');
+  try { estado.citas = await rpc('cup_mis_citas', { p_token: C.ls.get(TK) }); } catch (e) { estado.citas = []; }
   pintar(recienRegistrada);
+}
+
+// ---------- Enfermera: agendar llamada ----------
+function tarjetaEnfermera() {
+  const prox = (estado.citas || []).find(c => c.estado === 'agendada' && c.futura);
+  if (prox) return `<div class="card" style="border-color:var(--navy)">
+      <h3 style="margin:0 0 4px">Tu llamada con la enfermera</h3>
+      <div><b>${C.esc(C.fechaCita(prox.inicio))}</b> · ${prox.modalidad === 'videollamada' ? 'Videollamada' : 'Llamada'}</div>
+      <div class="small muted">Tema: ${C.esc(C.MOTIVOS[prox.motivo] || prox.motivo)}. Te llamará a tu celular (WhatsApp); ten el teléfono a la mano.</div>
+      <button class="btn sm ghost" style="margin-top:8px" data-cancita="${prox.id}">Cancelar llamada</button></div>`;
+  return `<div class="card">
+      <h3 style="margin:0 0 4px">Habla con una enfermera</h3>
+      <p class="small muted" style="margin:0 0 8px">Gratis. Te orientamos sobre cólicos, estreñimiento, lactancia y alimentación de tu bebé. No sustituye la consulta con tu pediatra.</p>
+      <button class="btn block" id="bAgendar">Agendar una llamada</button></div>`;
+}
+
+async function agendar() {
+  $('#modalBox').innerHTML = '<span class="spinner"></span> Buscando horarios…';
+  $('#modal').classList.remove('hidden');
+  let slots;
+  try { slots = await rpc('cup_cita_disponibles', { p_token: C.ls.get(TK) }); }
+  catch (err) { $('#modalBox').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div><button class="btn block" id="bC">Cerrar</button>`; $('#bC').onclick = () => $('#modal').classList.add('hidden'); return; }
+  const dias = {};
+  slots.forEach(s => (dias[C.claveDia(s.inicio)] = dias[C.claveDia(s.inicio)] || []).push(s));
+  const claves = Object.keys(dias);
+  let dia = claves[0], hora = null;
+  const pintarSel = () => {
+    $('#modalBox').innerHTML = `
+      <h2>Agendar llamada</h2>
+      ${claves.length ? `
+      <label for="selDia">Día</label>
+      <select id="selDia">${claves.map(k => `<option value="${k}" ${k === dia ? 'selected' : ''}>${C.esc(C.diaCita(dias[k][0].inicio))}</option>`).join('')}</select>
+      <label>Hora (hora de Honduras)</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="horas">${dias[dia].map(s => `<button type="button" class="btn sm ${hora === s.inicio ? '' : 'ghost'}" data-h="${s.inicio}">${C.esc(C.horaCita(s.inicio))}</button>`).join('')}</div>
+      <label for="mod">¿Cómo prefieres?</label>
+      <select id="mod"><option value="llamada">Llamada</option><option value="videollamada">Videollamada por WhatsApp</option></select>
+      <label for="mot">¿Sobre qué quieres hablar?</label>
+      <select id="mot">${Object.entries(C.MOTIVOS).map(([k, v]) => `<option value="${k}">${C.esc(v)}</option>`).join('')}</select>
+      <label for="nota">Algo más que debamos saber (opcional)</label>
+      <textarea id="nota" maxlength="500" rows="2" style="width:100%"></textarea>
+      <div id="eAg"></div>
+      <button class="btn orange block" style="margin-top:12px" id="bOk" ${hora ? '' : 'disabled'}>Confirmar llamada</button>`
+      : '<p class="muted">Por ahora no hay horarios disponibles. Vuelve a intentar más tarde o escríbenos por WhatsApp.</p>'}
+      <button class="btn light block" style="margin-top:8px" id="bC">Cerrar</button>`;
+    $('#bC').onclick = () => $('#modal').classList.add('hidden');
+    if (!claves.length) return;
+    $('#selDia').onchange = e => { dia = e.target.value; hora = null; pintarSel(); };
+    $('#horas').querySelectorAll('[data-h]').forEach(b => b.onclick = () => { hora = b.dataset.h; const m = $('#mod').value, t = $('#mot').value, n = $('#nota').value; pintarSel(); $('#mod').value = m; $('#mot').value = t; $('#nota').value = n; });
+    $('#bOk').onclick = async () => {
+      $('#bOk').disabled = true;
+      try {
+        await rpc('cup_cita_agendar', { p_token: C.ls.get(TK), p_inicio: hora, p_modalidad: $('#mod').value, p_motivo: $('#mot').value, p_nota: $('#nota').value });
+        $('#modal').classList.add('hidden'); cargarCupones();
+      } catch (err) { $('#eAg').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`; $('#bOk').disabled = false; }
+    };
+  };
+  pintarSel();
 }
 
 function titulo(s) { return String(s || '').toLowerCase().replace(/(^|\s)\S/g, m => m.toUpperCase()); }
@@ -189,6 +247,7 @@ function pintar(recienRegistrada) {
       <div class="prog" style="margin-top:10px" title="Cupones usados"><i style="width:${total ? Math.round(canj / total * 100) : 0}%"></i></div>
       <div class="small muted" style="margin-top:4px">${canj} de ${total} cupones usados</div>
     </div>
+    ${m.consent_contacto === false ? '' : tarjetaEnfermera()}
     <div class="tabs" role="tablist">
       <button class="${estado.tab === 'disp' ? 'on' : ''}" data-t="disp">Cupones disponibles (${disp.length})</button>
       <button class="${estado.tab === 'usados' ? 'on' : ''}" data-t="usados">Canjeados</button>
@@ -200,6 +259,11 @@ function pintar(recienRegistrada) {
   app.querySelectorAll('[data-canjear]').forEach(b => b.onclick = () => mostrarCodigo(b.dataset.canjear));
   app.querySelectorAll('[data-donde]').forEach(b => b.onclick = () => dondeComprar(b.dataset.donde));
   $('#bRef').onclick = () => cargarCupones();
+  if ($('#bAgendar')) $('#bAgendar').onclick = agendar;
+  app.querySelectorAll('[data-cancita]').forEach(b => b.onclick = async () => {
+    if (!confirm('¿Cancelar tu llamada?')) return;
+    try { await rpc('cup_cita_cancelar', { p_token: C.ls.get(TK), p_id: b.dataset.cancita }); cargarCupones(); } catch (e) { alert(C.msg(e)); }
+  });
 }
 
 function tarjetaCupon(c) {
