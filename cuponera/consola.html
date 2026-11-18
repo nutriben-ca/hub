@@ -14,8 +14,8 @@
   .lista-med{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:6px}
   .lista-med div{padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:.88rem}
   .lista-med div:hover,.lista-med div.on{background:var(--sky3)}
-  .seg{display:flex;gap:6px;margin:10px 0}
-  .seg button{flex:1;border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:10px;font:inherit;font-weight:600;cursor:pointer;color:var(--muted)}
+  .seg{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
+  .seg button{flex:1 1 180px;border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:10px;font:inherit;font-weight:600;cursor:pointer;color:var(--muted)}
   .seg button.on{border-color:var(--navy);color:var(--navy);background:var(--sky3)}
   .plant{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin:6px 0;cursor:pointer}
   .plant.on{border-color:var(--navy);background:var(--sky3)}
@@ -137,18 +137,55 @@ async function selectorMedico(cont, onPick) {
   pintar('');
 }
 
+// ---------- Selector de varios médicos (campañas masivas) ----------
+async function selectorMedicos(cont, sel, onChange) {
+  cont.innerHTML = '<div class="muted"><span class="spinner"></span> Cargando panel…</div>';
+  let todos = [];
+  try { todos = await rpc('cup_mi_panel', { p_buscar: null }); } catch (e) { cont.innerHTML = err(e); return; }
+  const uniq = k => [...new Set(todos.map(m => m[k]).filter(Boolean))].sort();
+  const opt = (id, et, vals) => `<div><label style="margin-top:0">${et}</label><select id="${id}"><option value="">Todos</option>${vals.map(v => `<option>${C.esc(v)}</option>`).join('')}</select></div>`;
+  cont.innerHTML = `<div class="row">${YO.admin ? opt('fVm', 'Visitador', uniq('mr')) : ''}${opt('fPa', 'País', uniq('pais'))}</div>
+    <div class="row">${opt('fCi', 'Ciudad', uniq('ciudad'))}${opt('fEs', 'Especialidad', uniq('especialidad'))}</div>
+    <input id="fBu" placeholder="Buscar por nombre…" autocomplete="off" style="margin-top:8px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px"><button type="button" class="btn sm" id="fTodos"></button>
+      <button type="button" class="btn sm light" id="fNada">Quitar selección</button><label class="check" style="margin:0"><input type="checkbox" id="fSolo"> Ver solo marcados</label></div>
+    <div class="small" id="fCnt" style="margin-top:6px"></div>
+    <div class="lista-med" id="lisMul" style="max-height:340px"></div>`;
+  const g = id => cont.querySelector('#' + id);
+  const filtrados = () => {
+    const vm = g('fVm') ? g('fVm').value : '', pa = g('fPa').value, ci = g('fCi').value, es = g('fEs').value, q = g('fBu').value.toLowerCase(), solo = g('fSolo').checked;
+    return todos.filter(m => (!vm || m.mr === vm) && (!pa || m.pais === pa) && (!ci || m.ciudad === ci) && (!es || m.especialidad === es) &&
+      (!q || m.nombre.toLowerCase().includes(q)) && (!solo || sel.has(m.id)));
+  };
+  const pintar = () => {
+    const f = filtrados();
+    g('fTodos').textContent = 'Marcar los ' + f.length + ' de la lista';
+    g('fCnt').innerHTML = `<b>${sel.size}</b> médicos marcados · ${f.length} en la lista${f.length > 500 ? ' (se muestran 500; el botón marca todos)' : ''}`;
+    g('lisMul').innerHTML = f.slice(0, 500).map(m => `<div><label style="display:flex;gap:8px;align-items:flex-start;margin:0;font-weight:400;cursor:pointer"><input type="checkbox" data-id="${m.id}" ${sel.has(m.id) ? 'checked' : ''} style="width:auto;margin-top:3px">
+      <span>${C.esc(titulo(m.nombre))} <span class="muted small">· ${C.esc(m.ciudad || '')}${m.especialidad ? ' · ' + C.esc(m.especialidad) : ''}${YO.admin ? ' · ' + C.esc(m.mr || 'sin VM') : ''}</span></span></label></div>`).join('') || '<div class="muted">Sin resultados</div>';
+    g('lisMul').querySelectorAll('input[data-id]').forEach(c => c.onchange = () => { c.checked ? sel.add(+c.dataset.id) : sel.delete(+c.dataset.id); g('fCnt').querySelector('b').textContent = sel.size; onChange(); });
+    onChange();
+  };
+  ['fVm', 'fPa', 'fCi', 'fEs', 'fSolo'].forEach(id => g(id) && (g(id).onchange = pintar));
+  g('fBu').oninput = pintar;
+  g('fTodos').onclick = () => { filtrados().forEach(m => sel.add(m.id)); pintar(); };
+  g('fNada').onclick = () => { sel.clear(); pintar(); };
+  pintar();
+}
+
 // ---------- Emitir ----------
 async function emitir() {
   const cont = $('#cont');
   cont.innerHTML = '<div class="card"><span class="spinner"></span></div>';
   let pls = [];
   try { pls = await rpc('cup_plantillas_vm'); } catch (e) { cont.innerHTML = err(e); return; }
-  const st = { pl: null, med: null, modo: 'madre' };
+  const st = { pl: null, med: null, meds: new Set(), modo: 'madre' };
+  const medSelIni = () => selectorMedico($('#selMed'), m => st.med = m);
   cont.innerHTML = `<div class="grid2">
     <div class="card"><h2>1. Elige la plantilla</h2><p class="small muted">Solo puedes emitir desde los modelos aprobados.</p><div id="pls"></div></div>
-    <div class="card"><h2>2. Médico</h2><div id="selMed"></div></div></div>
+    <div class="card"><h2 id="tMed">2. Médico</h2><div id="selMed"></div></div></div>
     <div class="card"><h2>3. ¿A quién?</h2>
-      <div class="seg"><button data-m="madre" class="on">A una madre</button><button data-m="campana">Campaña para pacientes del médico</button></div>
+      <div class="seg"><button data-m="madre" class="on">A una madre</button><button data-m="campana">Campaña para pacientes del médico</button><button data-m="masiva">Campaña para varios médicos</button></div>
       <div id="frm"></div><div id="eEm"></div>
       <button class="btn orange" id="bEm" style="margin-top:12px">Emitir</button></div>`;
   $('#pls').innerHTML = pls.length ? pls.map(p => {
@@ -161,24 +198,50 @@ async function emitir() {
   $('#pls').querySelectorAll('.plant:not(.agot)').forEach(d => d.onclick = () => {
     $('#pls').querySelectorAll('.plant').forEach(x => x.classList.remove('on')); d.classList.add('on'); st.pl = pls.find(p => p.id === d.dataset.id);
   });
-  selectorMedico($('#selMed'), m => st.med = m);
+  medSelIni();
   const frm = () => {
     $('#frm').innerHTML = st.modo === 'madre' ? `
       <div class="row"><div><label>Celular de la madre</label><input id="mCel" inputmode="tel" placeholder="9999-9999"></div>
       <div><label>Nombre de la madre</label><input id="mNom" placeholder="Solo si es nueva"></div></div>
       <div class="row"><div><label>Nombre del bebé</label><input id="mBebe"></div><div><label>Fecha de nacimiento del bebé</label><input id="mNac" type="date"></div></div>
       <label class="check"><input type="checkbox" id="mCons"><span>La madre autorizó el uso de sus datos y el contacto del Club Nutribén.</span></label>
-      <p class="small muted">Si la madre ya está registrada basta el celular. Al emitir, envíale el enlace por WhatsApp.</p>` : `
+      <p class="small muted">Si la madre ya está registrada basta el celular. Al emitir, envíale el enlace por WhatsApp.</p>` : st.modo === 'masiva' ? `
+      <p class="small">Se crea una campaña igual para cada médico marcado arriba: las madres que se registren con su tarjeta QR reciben el cupón, hasta agotar el cupo de ese médico.</p>
+      <div class="row"><div><label>Cupo por médico (madres)</label><input id="cCupo" type="number" min="1" max="500" value="5"></div>
+      <div><label>Vigente hasta (opcional)</label><input id="cHasta" type="date"></div></div>
+      <p class="small" id="mRes"></p>
+      <p class="small muted">${YO.admin ? 'Como administrador no gastas tope mensual: cada campaña queda a nombre del visitador del médico y tampoco le gasta el suyo.' : 'El total (médicos × cupo) se descuenta de tu tope mensual.'} Los médicos que ya tienen una campaña abierta de este cupón se omiten.</p>` : `
       <p class="small">Las madres que se registren con la tarjeta QR de este médico reciben el cupón automáticamente, hasta agotar el cupo.</p>
       <div class="row"><div><label>Cupo (madres)</label><input id="cCupo" type="number" min="1" max="500" value="10"></div>
       <div><label>Vigente hasta (opcional)</label><input id="cHasta" type="date"></div></div>
       <p class="small muted">El cupo se descuenta de tu tope mensual al crear la campaña. Si la cierras, se libera lo no usado.</p>`;
   };
-  cont.querySelectorAll('.seg button').forEach(b => b.onclick = () => { cont.querySelectorAll('.seg button').forEach(x => x.classList.remove('on')); b.classList.add('on'); st.modo = b.dataset.m; frm(); });
+  const resumen = () => { if (!$('#mRes')) return; const n = st.meds.size, c = +$('#cCupo').value || 0;
+    $('#mRes').innerHTML = n ? `<b>${n}</b> médicos × ${c} = hasta <b>${n * c}</b> cupones.` : '<span class="chip warn">Marca los médicos en el paso 2</span>'; };
+  const medSel = () => {
+    $('#tMed').textContent = st.modo === 'masiva' ? '2. Médicos (marca varios)' : '2. Médico';
+    if (st.modo === 'masiva') selectorMedicos($('#selMed'), st.meds, resumen); else { st.med = null; selectorMedico($('#selMed'), m => st.med = m); }
+  };
+  cont.querySelectorAll('.seg button').forEach(b => b.onclick = () => { cont.querySelectorAll('.seg button').forEach(x => x.classList.remove('on')); b.classList.add('on');
+    const antes = st.modo; st.modo = b.dataset.m; if ((antes === 'masiva') !== (st.modo === 'masiva')) medSel(); frm(); if ($('#cCupo')) $('#cCupo').oninput = resumen; resumen(); });
   frm();
   $('#bEm').onclick = async () => {
     $('#eEm').innerHTML = '';
     if (!st.pl) return $('#eEm').innerHTML = '<div class="alert warn">Elige una plantilla.</div>';
+    if (st.modo === 'masiva') {
+      const n = st.meds.size, cupo = +$('#cCupo').value;
+      if (!n) return $('#eEm').innerHTML = '<div class="alert warn">Marca al menos un médico.</div>';
+      if (!confirm(`¿Crear ${n} campañas de "${st.pl.nombre}" con cupo de ${cupo} madres cada una? Son hasta ${n * cupo} cupones.`)) return;
+      const bm = $('#bEm'); bm.disabled = true;
+      try {
+        const r = await rpc('cup_crear_campanas', { p_plantilla: st.pl.id, p_medicos: [...st.meds], p_cupo: cupo, p_hasta: $('#cHasta').value || null });
+        modal(`<h2>Campañas creadas</h2><table><tr><th>Campañas nuevas</th><td><b>${r.creadas}</b></td></tr><tr><th>Cupones posibles</th><td>${r.cupones_posibles}</td></tr>
+          <tr><th>Médicos omitidos (ya tenían campaña abierta)</th><td>${r.ya_tenian}</td></tr>${r.fuera_de_panel ? `<tr><th>Fuera de tu panel</th><td>${r.fuera_de_panel}</td></tr>` : ''}</table>
+          <p class="small muted">Las ves y las puedes cerrar en "Campañas". Cada médico necesita sus tarjetas QR impresas o su enlace digital.</p><button class="btn block" onclick="cerrarModal()">Listo</button>`);
+        emitir();
+      } catch (e) { $('#eEm').innerHTML = err(e); bm.disabled = false; }
+      return;
+    }
     if (!st.med) return $('#eEm').innerHTML = '<div class="alert warn">Elige el médico.</div>';
     const b = $('#bEm'); b.disabled = true;
     try {
