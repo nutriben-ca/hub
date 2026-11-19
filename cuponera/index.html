@@ -38,7 +38,7 @@ const params = new URLSearchParams(location.search);
 const TARJETA = (params.get('t') || '').trim().toUpperCase();
 const ORIGEN = params.get('d') ? 'digital' : null;
 const TK = 'cup_madre_token';
-let estado = { tab: 'disp', datos: null };
+let estado = { tab: 'disp', sub: 'disp', datos: null };
 
 $('#waLink').textContent = C.WHATSAPP_TXT;
 $('#waLink').href = 'https://wa.me/' + C.WHATSAPP;
@@ -47,6 +47,23 @@ async function rpc(fn, args) {
   const { data, error } = await sb.rpc(fn, args);
   if (error) throw error;
   return data;
+}
+
+const ICO = {
+  cupon: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9a2 2 0 0 0 0 6v2a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-2a2 2 0 0 1 0-6V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M14 6v12" stroke-dasharray="2 2.6"/></svg>',
+  enfermera: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5s-7-4.3-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10.5c0 5.7-7 10-7 10z"/></svg>',
+  libro: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v15h5.5a1.5 1.5 0 0 1 1.5 1.5z"/></svg>'
+};
+function saludoHora() {
+  const h = +new Date().toLocaleString('en-US', { timeZone: 'America/Tegucigalpa', hour: 'numeric', hour12: false }) % 24;
+  return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
+}
+function beneficios() {
+  return `<div class="ben">
+    <div class="b"><span class="i c1">${ICO.cupon}</span><div><b>Cupones de ahorro</b><span>Descuentos en la fórmula de tu bebé, en farmacias participantes.</span></div></div>
+    <div class="b"><span class="i c2">${ICO.enfermera}</span><div><b>Enfermera sin costo</b><span>Una llamada o videollamada para cólicos, lactancia y alimentación.</span></div></div>
+    <div class="b"><span class="i c3">${ICO.libro}</span><div><b>Videos y guías</b><span>Contenido revisado por nuestro equipo médico, cuando lo necesites.</span></div></div>
+  </div>`;
 }
 
 function hoyMenos(dias) { const d = new Date(); d.setDate(d.getDate() - dias); return d.toISOString().slice(0, 10); }
@@ -62,19 +79,18 @@ async function inicio() {
 function bienvenida() {
   $('#btnSalir').classList.add('hidden');
   app.innerHTML = `
-    <div class="hero">
-      <h1>Club de beneficios</h1>
-      <p style="margin:0;opacity:.9">Cupones para la nutrición de tu bebé, consejería gratuita y eventos especiales.</p>
+    <div class="hero big">
+      <div class="kicker">Club de beneficios</div>
+      <h1>Te damos la bienvenida al Club Nutribén</h1>
+      <p>Un acompañamiento para ti y tu bebé, desde tu celular y sin costo.</p>
     </div>
-    <div class="card">
-      <h2>¿Primera vez?</h2>
-      <p class="muted small">Si tu pediatra te dio una tarjeta <b>Comienzo saludable</b>, escanea su código QR: así quedas registrada con tu médico.</p>
-      <button class="btn block" id="bReg">Registrarme sin tarjeta</button>
-    </div>
-    <div class="card">
-      <h2>Ya estoy registrada</h2>
-      <p class="muted small">Entra con tu celular y la fecha de nacimiento de tu bebé.</p>
-      <button class="btn block ghost" id="bIng">Entrar</button>
+    <h2 class="sec">Esto es lo que incluye tu club</h2>
+    ${beneficios()}
+    <div class="cta-box">
+      <button class="btn block orange lg" id="bIng">Entrar a mi club</button>
+      <div class="o">¿Aún no te has registrado?</div>
+      <button class="btn block ghost" id="bReg">Registrarme, toma 1 minuto</button>
+      <p class="small muted" style="text-align:center;margin:10px 0 0">Si tu pediatra te dio una tarjeta <b>Comienzo saludable</b>, escanea su QR: así quedas registrada con tu médico.</p>
     </div>`;
   $('#bReg').onclick = () => registro();
   $('#bIng').onclick = () => ingresar();
@@ -89,8 +105,10 @@ async function registro() {
   try { farmacias = await rpc('cup_lista_farmacias'); } catch (e) {}
   app.innerHTML = `
     <div class="hero">
-      <h1>Regístrate</h1>
-      <p style="margin:0;opacity:.95">${medico ? 'Tu pediatra <b>Dr(a). ' + C.esc(titulo(medico)) + '</b> te recomienda el Club Nutribén.' : 'Disfruta de los beneficios del Club Nutribén.'}</p>
+      <div class="kicker">Club Nutribén</div>
+      <h1>Crea tu club en 1 minuto</h1>
+      <p style="margin:0 0 10px;opacity:.95">${medico ? 'Tu pediatra <b>Dr(a). ' + C.esc(titulo(medico)) + '</b> te recomienda el Club Nutribén.' : 'Tu bebé y tú merecen un acompañamiento completo.'}</p>
+      <div class="pills"><span>Cupones</span><span>Enfermera gratis</span><span>Videos y guías</span></div>
     </div>
     <form class="card" id="fReg" autocomplete="on">
       <label for="nombre">Tu nombre completo</label>
@@ -109,7 +127,7 @@ async function registro() {
       <label class="check"><input type="checkbox" id="cCont" checked>
         <span>Acepto que una enfermera del Club Nutribén me contacte por WhatsApp o llamada para darme seguimiento.</span></label>
       <div id="eReg"></div>
-      <button class="btn block orange" id="bEnviar" type="submit">Registrarme y ver mis cupones</button>
+      <button class="btn block orange" id="bEnviar" type="submit">Crear mi club y ver mis cupones</button>
       <p class="small muted" style="text-align:center;margin:12px 0 0"><a href="#" id="yaReg">Ya estoy registrada</a></p>
     </form>`;
   $('#yaReg').onclick = e => { e.preventDefault(); ingresar(); };
@@ -128,23 +146,28 @@ async function registro() {
       cargarCupones(true);
     } catch (err) {
       $('#eReg').innerHTML = `<div class="alert bad">${C.esc(C.msg(err))}</div>`;
-      b.disabled = false; b.textContent = 'Registrarme y ver mis cupones';
+      b.disabled = false; b.textContent = 'Crear mi club y ver mis cupones';
     }
   };
 }
 
 function ingresar() {
   app.innerHTML = `
+    <div class="hero">
+      <div class="kicker">Club Nutribén</div>
+      <h1>¡Qué bueno verte de nuevo!</h1>
+      <p style="margin:0;opacity:.95">Sin contraseñas: solo tu celular y la fecha de nacimiento de tu bebé.</p>
+    </div>
     <form class="card" id="fIng">
-      <h2>Entrar al club</h2>
-      <label for="icel">Tu celular</label>
+      <label for="icel" style="margin-top:0">Tu celular (el de tu registro)</label>
       <input id="icel" required inputmode="tel" placeholder="9999-9999" autocomplete="tel">
-      <label for="inac">Fecha de nacimiento del bebé</label>
+      <label for="inac">¿Cuándo nació tu bebé?</label>
       <input id="inac" type="date" required max="${hoyMenos(0)}">
       <div id="eIng"></div>
-      <button class="btn block" id="bIng2" type="submit">Entrar</button>
-      <p class="small muted" style="text-align:center;margin:12px 0 0"><a href="#" id="volver">Volver</a></p>
+      <button class="btn block orange lg" id="bIng2" type="submit" style="margin-top:14px">Entrar a mi club</button>
+      <p class="small muted" style="text-align:center;margin:12px 0 0">¿Primera vez? <a href="#" id="nueva">Regístrate aquí</a> · <a href="#" id="volver">Volver</a></p>
     </form>`;
+  $('#nueva').onclick = e => { e.preventDefault(); registro(); };
   $('#volver').onclick = e => { e.preventDefault(); TARJETA ? registro() : bienvenida(); };
   $('#fIng').onsubmit = async e => {
     e.preventDefault();
@@ -202,9 +225,9 @@ function tarjetaEnfermera() {
       <div class="small muted">Tema: ${C.esc(C.MOTIVOS[prox.motivo] || prox.motivo)}. Te llamará a tu celular (WhatsApp); ten el teléfono a la mano.</div>
       <button class="btn sm ghost" style="margin-top:8px" data-cancita="${prox.id}">Cancelar llamada</button></div>`;
   return `<div class="card">
-      <h3 style="margin:0 0 4px">Habla con una enfermera</h3>
-      <p class="small muted" style="margin:0 0 8px">Gratis. Te orientamos sobre cólicos, estreñimiento, lactancia y alimentación de tu bebé. No sustituye la consulta con tu pediatra.</p>
-      <button class="btn block" id="bAgendar">Agendar una llamada</button></div>`;
+      <h3 style="margin:0 0 4px">No estás sola: habla con una enfermera</h3>
+      <p class="small muted" style="margin:0 0 10px">Es gratis. Te orientamos sobre cólicos, estreñimiento, lactancia y alimentación de tu bebé, por llamada o videollamada. No sustituye la consulta con tu pediatra.</p>
+      <button class="btn block orange" id="bAgendar">Agendar mi llamada gratis</button></div>`;
 }
 
 async function agendar() {
@@ -257,25 +280,42 @@ function pintar(recienRegistrada) {
   const disp = d.cupones.filter(c => c.estado === 'disponible');
   const usados = d.cupones.filter(c => c.estado !== 'disponible');
   const total = d.cupones.length, canj = d.cupones.filter(c => c.usos > 0).length;
-  const lista = estado.tab === 'disp' ? disp : usados;
+  const conEnf = m.consent_contacto !== false;
+  const prox = (estado.citas || []).find(c => c.estado === 'agendada' && c.futura);
+  if (!conEnf && estado.tab === 'enf') estado.tab = 'disp';
+  const nombre = C.esc(titulo(m.nombre.split(' ')[0]));
+  const sub = m.bebe
+    ? `Este es el club de <b>${C.esc(m.bebe)}</b>. Cupones, enfermera y guías, todo en un solo lugar y sin costo.`
+    : 'Cupones, enfermera y guías para tu bebé, todo en un solo lugar y sin costo.';
+  const tile = (k, ico, tit, det) => `<button class="${estado.tab === k ? 'on' : ''}" data-t="${k}" role="tab" aria-selected="${estado.tab === k}">${ico}<b>${tit}</b><span>${det}</span></button>`;
+  let cuerpo;
+  if (estado.tab === 'bib') cuerpo = biblioteca();
+  else if (estado.tab === 'enf') cuerpo = tarjetaEnfermera();
+  else {
+    const ver = estado.sub === 'usados' ? usados : disp;
+    cuerpo = `${usados.length ? `<div class="sub"><button class="${estado.sub !== 'usados' ? 'on' : ''}" data-s="disp">Disponibles (${disp.length})</button><button class="${estado.sub === 'usados' ? 'on' : ''}" data-s="usados">Ya usados (${usados.length})</button></div>` : ''}
+      ${ver.length ? ver.map(tarjetaCupon).join('') : (estado.sub === 'usados' ? '<div class="card muted" style="text-align:center">Aún no has usado cupones.</div>' : vacio(conEnf))}`;
+  }
   app.innerHTML = `
-    ${recienRegistrada ? '<div class="alert ok">¡Bienvenida al Club Nutribén! Ya puedes usar tus cupones.</div>' : ''}
-    <div style="margin:4px 0 10px">
-      <h1 style="color:var(--ink);font-weight:400">Hola <b style="color:var(--navy)">${C.esc(m.nombre.split(' ')[0])}</b></h1>
-      ${m.bebe ? `<div class="muted small">Club de ${C.esc(m.bebe)}${m.medico ? ' · Pediatra: Dr(a). ' + C.esc(titulo(m.medico)) : ''}</div>` : ''}
-      <div class="prog" style="margin-top:10px" title="Cupones usados"><i style="width:${total ? Math.round(canj / total * 100) : 0}%"></i></div>
-      <div class="small muted" style="margin-top:4px">${canj} de ${total} cupones usados</div>
+    ${recienRegistrada ? '<div class="alert ok" style="font-weight:600">¡Listo, ya eres parte del Club Nutribén! Aquí está todo lo que tienes para ti y tu bebé.</div>' : ''}
+    <div class="hero home">
+      <div class="kicker">${saludoHora()}</div>
+      <h1>${nombre}, ¡qué gusto verte!</h1>
+      <p>${sub}</p>
+      ${m.medico ? `<div class="pills"><span>Tu pediatra: Dr(a). ${C.esc(titulo(m.medico))}</span></div>` : ''}
     </div>
-    ${m.consent_contacto === false ? '' : tarjetaEnfermera()}
-    <div class="tabs" role="tablist">
-      <button class="${estado.tab === 'disp' ? 'on' : ''}" data-t="disp">Cupones disponibles (${disp.length})</button>
-      <button class="${estado.tab === 'usados' ? 'on' : ''}" data-t="usados">Canjeados</button>
-      <button class="${estado.tab === 'bib' ? 'on' : ''}" data-t="bib">Biblioteca</button>
+    ${prox && conEnf && estado.tab !== 'enf' ? tarjetaEnfermera() : ''}
+    <div class="tiles" role="tablist">
+      ${tile('disp', ICO.cupon, 'Cupones', disp.length ? disp.length + (disp.length === 1 ? ' disponible' : ' disponibles') : 'Tus ahorros')}
+      ${conEnf ? tile('enf', ICO.enfermera, 'Enfermera', prox ? 'Llamada agendada' : 'Gratis, para ti') : ''}
+      ${tile('bib', ICO.libro, 'Guías', 'Videos y consejos')}
     </div>
-    <div id="lista">${estado.tab === 'bib' ? biblioteca() : lista.length ? lista.map(tarjetaCupon).join('') :
-      `<div class="card muted" style="text-align:center">${estado.tab === 'disp' ? 'No tienes cupones disponibles por ahora. Pregúntale a tu pediatra por los beneficios del club.' : 'Aún no has canjeado cupones.'}</div>`}</div>
-    <button class="btn light block" id="bRef" type="button">Actualizar</button>`;
-  app.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { estado.tab = b.dataset.t; pintar(); });
+    <div id="lista">${cuerpo}</div>
+    ${total ? `<div class="card ahorro"><div class="small muted">Tu avance en el club</div><div class="prog" style="margin:6px 0 4px"><i style="width:${Math.round(canj / total * 100)}%"></i></div><div class="small"><b>${canj} de ${total}</b> ${total === 1 ? 'cupón usado' : 'cupones usados'}${canj < total ? ' · ¡aprovecha los que te faltan!' : ' · ¡los aprovechaste todos!'}</div></div>` : ''}
+    <button class="btn light block" id="bRef" type="button">Actualizar mi club</button>`;
+  app.querySelectorAll('.tiles button').forEach(b => b.onclick = () => { estado.tab = b.dataset.t; pintar(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  app.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => { estado.tab = b.dataset.ir; pintar(); });
+  app.querySelectorAll('.sub button').forEach(b => b.onclick = () => { estado.sub = b.dataset.s; pintar(); });
   app.querySelectorAll('[data-canjear]').forEach(b => b.onclick = () => mostrarCodigo(b.dataset.canjear));
   app.querySelectorAll('[data-donde]').forEach(b => b.onclick = () => dondeComprar(b.dataset.donde));
   $('#bRef').onclick = () => cargarCupones();
@@ -284,6 +324,16 @@ function pintar(recienRegistrada) {
     if (!confirm('¿Cancelar tu llamada?')) return;
     try { await rpc('cup_cita_cancelar', { p_token: C.ls.get(TK), p_id: b.dataset.cancita }); cargarCupones(); } catch (e) { alert(C.msg(e)); }
   });
+}
+
+function vacio(conEnf) {
+  return `<div class="card vacio">
+    <div class="big-i">${ICO.cupon}</div>
+    <h3>Tus cupones llegarán aquí</h3>
+    <p class="small muted">Tu pediatra o tu visitador Nutribén te los activan. Mientras tanto, ya puedes usar el resto del club:</p>
+    ${conEnf ? '<button class="btn block orange" data-ir="enf">Hablar con una enfermera, gratis</button>' : ''}
+    <button class="btn block ${conEnf ? 'ghost' : 'orange'}" data-ir="bib" style="margin-top:8px">Ver videos y guías</button>
+  </div>`;
 }
 
 function tarjetaCupon(c) {
