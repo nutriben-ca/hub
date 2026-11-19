@@ -115,3 +115,7 @@ th{font-size:.75rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mut
 .vacio{text-align:center}.vacio h3{margin:6px 0 4px}.vacio p{margin:0 0 12px}
 .big-i{width:56px;height:56px;margin:0 auto;border-radius:16px;background:var(--sky3);color:var(--navy);display:flex;align-items:center;justify-content:center}
 .ahorro{background:linear-gradient(135deg,#fff,var(--sky3))}
+.pasos{display:grid;gap:8px}
+.pasos div{display:flex;gap:10px;align-items:center;font-size:.9rem}
+.pasos i{flex:0 0 26px;height:26px;border-radius:50%;background:#FCE4F0;color:#B23A7A;font-style:normal;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.85rem}
+.enf{border-color:#F3C6DD}

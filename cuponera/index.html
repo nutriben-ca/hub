@@ -61,7 +61,7 @@ function saludoHora() {
 function beneficios() {
   return `<div class="ben">
     <div class="b"><span class="i c1">${ICO.cupon}</span><div><b>Cupones de ahorro</b><span>Descuentos en la fórmula de tu bebé, en farmacias participantes.</span></div></div>
-    <div class="b"><span class="i c2">${ICO.enfermera}</span><div><b>Enfermera sin costo</b><span>Una llamada o videollamada para cólicos, lactancia y alimentación.</span></div></div>
+    <div class="b"><span class="i c2">${ICO.enfermera}</span><div><b>Una enfermera que te acompaña, sin costo</b><span>Elige el día y la hora y te llama por WhatsApp, en llamada o videollamada. Resuelve con calma tus dudas de cólicos, estreñimiento, lactancia, alimentación y sueño.</span></div></div>
     <div class="b"><span class="i c3">${ICO.libro}</span><div><b>Videos y guías</b><span>Contenido revisado por nuestro equipo médico, cuando lo necesites.</span></div></div>
   </div>`;
 }
@@ -224,10 +224,18 @@ function tarjetaEnfermera() {
       <div><b>${C.esc(C.fechaCita(prox.inicio))}</b> · ${prox.modalidad === 'videollamada' ? 'Videollamada' : 'Llamada'}</div>
       <div class="small muted">Tema: ${C.esc(C.MOTIVOS[prox.motivo] || prox.motivo)}. Te llamará a tu celular (WhatsApp); ten el teléfono a la mano.</div>
       <button class="btn sm ghost" style="margin-top:8px" data-cancita="${prox.id}">Cancelar llamada</button></div>`;
-  return `<div class="card">
+  return `<div class="card enf">
       <h3 style="margin:0 0 4px">No estás sola: habla con una enfermera</h3>
-      <p class="small muted" style="margin:0 0 10px">Es gratis. Te orientamos sobre cólicos, estreñimiento, lactancia y alimentación de tu bebé, por llamada o videollamada. No sustituye la consulta con tu pediatra.</p>
-      <button class="btn block orange" id="bAgendar">Agendar mi llamada gratis</button></div>`;
+      <p class="small" style="margin:0 0 10px">Criar a un bebé trae dudas a cualquier hora. Con el club puedes conversar con una enfermera, <b>sin costo</b>, y salir de la consulta con más tranquilidad.</p>
+      <div class="pasos">
+        <div><i>1</i><span><b>Elige día y hora</b> que te queden cómodos.</span></div>
+        <div><i>2</i><span><b>Cuéntanos el tema</b> que te preocupa.</span></div>
+        <div><i>3</i><span><b>Te llamamos a tu WhatsApp</b>, en llamada o videollamada.</span></div>
+      </div>
+      <div class="small muted" style="margin:10px 0 4px">Puedes consultar sobre:</div>
+      <div>${Object.values(C.MOTIVOS).filter(v => v !== 'Otro tema').map(v => `<span class="chip">${C.esc(v)}</span>`).join('')}</div>
+      <button class="btn block orange" style="margin-top:12px" id="bAgendar">Agendar mi llamada gratis</button>
+      <p class="small muted" style="margin:10px 0 0;text-align:center">Te orienta y acompaña; no sustituye la consulta con tu pediatra.</p></div>`;
 }
 
 async function agendar() {
@@ -307,7 +315,7 @@ function pintar(recienRegistrada) {
     ${prox && conEnf && estado.tab !== 'enf' ? tarjetaEnfermera() : ''}
     <div class="tiles" role="tablist">
       ${tile('disp', ICO.cupon, 'Cupones', disp.length ? disp.length + (disp.length === 1 ? ' disponible' : ' disponibles') : 'Tus ahorros')}
-      ${conEnf ? tile('enf', ICO.enfermera, 'Enfermera', prox ? 'Llamada agendada' : 'Gratis, para ti') : ''}
+      ${conEnf ? tile('enf', ICO.enfermera, 'Enfermera', prox ? 'Llamada agendada' : 'Gratis, por WhatsApp') : ''}
       ${tile('bib', ICO.libro, 'Guías', 'Videos y consejos')}
     </div>
     <div id="lista">${cuerpo}</div>
