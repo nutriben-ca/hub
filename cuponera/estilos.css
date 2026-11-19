@@ -85,3 +85,48 @@ th{font-size:.75rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mut
 .pwd{position:relative}
 .pwd input{padding-right:84px}
 .pwd button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:var(--sky3);color:var(--navy);font:inherit;font-size:.8rem;font-weight:600;padding:6px 10px;border-radius:8px;cursor:pointer}
+
+/* ---------- Ingreso y bienvenida (club) ---------- */
+.wl{position:relative;overflow:hidden;border-radius:22px;padding:26px 22px 24px;margin:2px 0 16px;color:#fff;background:linear-gradient(150deg,#0033A1 0%,#1F52C4 55%,#00A0DF 130%);box-shadow:0 10px 28px rgba(0,51,161,.22)}
+.wl:before,.wl:after{content:"";position:absolute;border-radius:50%;pointer-events:none}
+.wl:before{width:190px;height:190px;right:-60px;top:-70px;background:rgba(255,255,255,.10)}
+.wl:after{width:120px;height:120px;left:-40px;bottom:-60px;background:rgba(231,176,209,.28)}
+.wl>*{position:relative;z-index:1}
+.wl .badge{width:56px;height:56px;border-radius:18px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;margin-bottom:14px;backdrop-filter:blur(2px)}
+.wl h1{color:#fff;font-size:1.6rem;font-weight:700;letter-spacing:-.3px;margin:0 0 8px}
+.wl p{margin:0;font-size:.98rem;line-height:1.5;color:rgba(255,255,255,.93)}
+.wl .eyebrow{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:99px;margin-bottom:12px}
+.perks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 16px}
+.perk{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 8px 10px;text-align:center;font-size:.78rem;font-weight:600;color:var(--ink);line-height:1.25}
+.perk .pi{width:40px;height:40px;border-radius:13px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center}
+.perk.a .pi{background:#FFF0D6}.perk.b .pi{background:#FBE7F2}.perk.c .pi{background:#E1F4F1}
+.perk small{display:block;font-weight:400;color:var(--muted);font-size:.72rem;margin-top:2px}
+.cta{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;margin:0 0 12px;box-shadow:0 2px 10px rgba(20,33,61,.04)}
+.cta h2{font-size:1.05rem;margin:0 0 2px}
+.cta p{margin:0 0 12px;color:var(--muted);font-size:.88rem}
+.cta.main{border:2px solid var(--navy)}
+.btn.lg{padding:14px 20px;font-size:1rem;border-radius:12px}
+.btn.orange.lg{box-shadow:0 6px 16px rgba(250,163,52,.35)}
+.btn.navy-sh{box-shadow:0 6px 16px rgba(0,51,161,.28)}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.78rem;margin:2px 0 12px}
+.or:before,.or:after{content:"";flex:1;height:1px;background:var(--line)}
+.trust{display:flex;gap:8px;align-items:center;justify-content:center;font-size:.78rem;color:var(--muted);margin:6px 0 4px;text-align:center}
+.field{position:relative}
+.field .ficon{position:absolute;left:12px;top:50%;transform:translateY(-50%);display:flex;color:var(--navy2);pointer-events:none}
+.field input{padding-left:42px;height:50px;font-size:1rem}
+.field .pre{position:absolute;left:42px;top:50%;transform:translateY(-50%);font-weight:600;color:var(--muted);pointer-events:none}
+.field.tel input{padding-left:84px}
+.hint{font-size:.78rem;color:var(--muted);margin:5px 2px 0}
+.linkrow{text-align:center;font-size:.85rem;margin:14px 0 0;color:var(--muted)}
+.linkrow a{font-weight:600}
+.hola{position:relative;overflow:hidden;border-radius:20px;padding:18px 18px 16px;margin:2px 0 14px;color:#fff;background:linear-gradient(150deg,#0033A1 0%,#1F52C4 60%,#00A0DF 140%);box-shadow:0 8px 22px rgba(0,51,161,.2)}
+.hola:after{content:"";position:absolute;right:-50px;top:-50px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.1)}
+.hola>*{position:relative;z-index:1}
+.hola h1{color:#fff;font-weight:400;font-size:1.5rem;margin:0}
+.hola h1 b{font-weight:700}
+.hola .sub{font-size:.85rem;color:rgba(255,255,255,.88);margin-top:2px}
+.hola .prog{background:rgba(255,255,255,.25);margin-top:12px}
+.hola .prog i{background:var(--orange)}
+.hola .pt{font-size:.8rem;color:rgba(255,255,255,.9);margin-top:5px}
+.cta .linkrow{margin:14px 0 0;font-size:.85rem;color:var(--muted)}
+.cta .linkrow.s{margin-top:8px}
