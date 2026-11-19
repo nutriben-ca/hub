@@ -60,7 +60,7 @@ function saludoHora() {
 }
 function beneficios() {
   return `<div class="ben">
-    <div class="b"><span class="i c1">${ICO.cupon}</span><div><b>Cupones de ahorro</b><span>Descuentos en la fórmula de tu bebé, en farmacias participantes.</span></div></div>
+    <div class="b"><span class="i c1">${ICO.cupon}</span><div><b>Cupones exclusivos del club</b><span>Beneficios para las mamás del club, para canjear en farmacias participantes.</span></div></div>
     <div class="b"><span class="i c2">${ICO.enfermera}</span><div><b>Una enfermera que te acompaña, sin costo</b><span>Elige el día y la hora y te llama por WhatsApp, en llamada o videollamada. Resuelve con calma tus dudas de cólicos, estreñimiento, lactancia, alimentación y sueño.</span></div></div>
     <div class="b"><span class="i c3">${ICO.libro}</span><div><b>Videos y guías</b><span>Contenido revisado por nuestro equipo médico, cuando lo necesites.</span></div></div>
   </div>`;
@@ -314,7 +314,7 @@ function pintar(recienRegistrada) {
     </div>
     ${prox && conEnf && estado.tab !== 'enf' ? tarjetaEnfermera() : ''}
     <div class="tiles" role="tablist">
-      ${tile('disp', ICO.cupon, 'Cupones', disp.length ? disp.length + (disp.length === 1 ? ' disponible' : ' disponibles') : 'Tus ahorros')}
+      ${tile('disp', ICO.cupon, 'Cupones', disp.length ? disp.length + (disp.length === 1 ? ' disponible' : ' disponibles') : 'Tus beneficios')}
       ${conEnf ? tile('enf', ICO.enfermera, 'Enfermera', prox ? 'Llamada agendada' : 'Gratis, por WhatsApp') : ''}
       ${tile('bib', ICO.libro, 'Guías', 'Videos y consejos')}
     </div>
